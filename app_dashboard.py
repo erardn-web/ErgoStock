@@ -45,24 +45,7 @@ def load_data():
 with st.spinner("Chargement des données…"):
     df_mat, df_mv = load_data()
 
-total       = len(df_mat)
-disponible  = len(df_mat[df_mat["Statut"] == "Disponible"])    if not df_mat.empty else 0
-en_pret     = len(df_mat[df_mat["Statut"] == "En prêt"])       if not df_mat.empty else 0
-en_location = len(df_mat[df_mat["Statut"] == "En location"])   if not df_mat.empty else 0
-vendu       = len(df_mat[df_mat["Statut"] == "Vendu"])         if not df_mat.empty else 0
-donne       = len(df_mat[df_mat["Statut"] == "Donné"])         if not df_mat.empty else 0
-reparation  = len(df_mat[df_mat["Statut"] == "En réparation"]) if not df_mat.empty else 0
-
-col1, col2, col3, col4, col5, col6 = st.columns(6)
-with col1: st.metric("📦 Total", total)
-with col2: st.metric("🟢 Disponible", disponible)
-with col3: st.metric("🟡 En prêt", en_pret)
-with col4: st.metric("🔵 En location", en_location)
-with col5: st.metric("🔴 Vendu / Donné", vendu + donne)
-with col6: st.metric("🟠 En réparation", reparation)
-
-st.divider()
-
+# ── Bouton QR scanner ─────────────────────────────────────────────────────────
 qr_col, _ = st.columns([1, 2])
 with qr_col:
     st.markdown("""
@@ -70,7 +53,7 @@ with qr_col:
         <span class="icon">📷</span>
         <div>
             <h3>Scanner un QR Code</h3>
-            <p>Identifiez un article et enregistrez un mouvement rapidement</p>
+            <p>Identifier un article et enregistrer un mouvement</p>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -79,83 +62,133 @@ with qr_col:
 
 st.divider()
 
-left, right = st.columns([2, 1])
+# ── Retours en retard ou proches ──────────────────────────────────────────────
+st.subheader("⏰ Retours en retard ou à venir")
 
-with left:
-    st.subheader("📋 Matériel actuellement sorti")
-    sorti = df_mat[df_mat["Statut"].isin(["En prêt", "En location"])] if not df_mat.empty else pd.DataFrame()
-    if sorti.empty:
-        st.info("Aucun matériel actuellement sorti.")
-    else:
-        if not df_mv.empty:
-            last_mv = (df_mv
-                .sort_values("Date", ascending=False)
-                .drop_duplicates(subset="ID_Matériel", keep="first")
-                [["ID_Matériel", "Personne", "Contact", "Date_Retour_Prévu"]]
-            )
-            sorti = sorti.merge(last_mv, left_on="ID", right_on="ID_Matériel", how="left")
-        cols_show = ["Statut", "Nom", "Catégorie", "Personne", "Contact", "Date_Retour_Prévu"]
-        cols_show = [c for c in cols_show if c in sorti.columns]
-        st.dataframe(
-            sorti[cols_show].rename(columns={"Statut": "État", "Date_Retour_Prévu": "Retour prévu"}),
-            use_container_width=True, hide_index=True,
-        )
-
-with right:
-    st.subheader("⚡ Derniers mouvements")
-    if df_mv.empty:
-        st.info("Aucun mouvement enregistré.")
-    else:
-        recent = df_mv.sort_values("Date", ascending=False).head(8)
-        for _, row in recent.iterrows():
-            icon = {
-                "Prêt sortant": "📤", "Retour": "📥", "Achat": "🛒",
-                "Don reçu": "🎁", "Location": "🔵", "Vente": "💶", "Don sortant": "❤️",
-            }.get(row.get("Type_Mouvement", ""), "🔄")
-            st.markdown(
-                f"{icon} **{row.get('Nom_Matériel','?')}** — "
-                f"{row.get('Type_Mouvement','?')} *({row.get('Date','?')})*"
-            )
-
-st.divider()
-
-st.subheader("⏰ Retours en retard ou proches")
-if not df_mv.empty:
+if not df_mv.empty and not df_mat.empty:
     today = datetime.now().date()
+    ids_sortis = set(df_mat[df_mat["Statut"].isin(["En prêt", "En location"])]["ID"])
+
     df_retours = df_mv[
         df_mv["Type_Mouvement"].isin(["Prêt sortant", "Location"]) &
         df_mv["Date_Retour_Prévu"].notna() &
-        (df_mv["Date_Retour_Prévu"] != "")
+        (df_mv["Date_Retour_Prévu"] != "") &
+        df_mv["ID_Matériel"].isin(ids_sortis)
     ].copy()
+
     if not df_retours.empty:
         try:
-            df_retours["Date_Retour_Prévu"] = pd.to_datetime(df_retours["Date_Retour_Prévu"], errors="coerce")
+            df_retours["Date_Retour_Prévu"] = pd.to_datetime(
+                df_retours["Date_Retour_Prévu"], errors="coerce"
+            )
             df_retours = df_retours.dropna(subset=["Date_Retour_Prévu"])
-            df_retours["Jours restants"] = df_retours["Date_Retour_Prévu"].dt.date.apply(
+            df_retours["Jours"] = df_retours["Date_Retour_Prévu"].dt.date.apply(
                 lambda d: (d - today).days
             )
-            alerte = df_retours[df_retours["Jours restants"] <= 7].sort_values("Jours restants")
-            if not alerte.empty:
-                if not df_mat.empty:
-                    ids_sortis = set(df_mat[df_mat["Statut"].isin(["En prêt","En location"])]["ID"])
-                    alerte = alerte[alerte["ID_Matériel"].isin(ids_sortis)]
-                for _, row in alerte.iterrows():
-                    j = int(row["Jours restants"])
-                    color = "🔴" if j < 0 else ("🟠" if j <= 3 else "🟡")
-                    msg = f"**{row['Nom_Matériel']}** — {row['Personne']} — "
-                    if j < 0:
-                        msg += f"{color} En retard de {abs(j)} jour(s)"
-                    else:
-                        msg += f"{color} Retour dans {j} jour(s) ({row['Date_Retour_Prévu'].strftime('%d/%m/%Y')})"
-                    st.markdown(msg)
-            else:
+            df_retours = df_retours.sort_values("Jours")
+
+            retards   = df_retours[df_retours["Jours"] < 0]
+            imminent  = df_retours[(df_retours["Jours"] >= 0) & (df_retours["Jours"] <= 7)]
+            a_venir   = df_retours[df_retours["Jours"] > 7]
+
+            if retards.empty and imminent.empty:
                 st.success("✅ Aucun retour en retard ou imminent.")
-        except Exception:
-            st.info("Impossible de calculer les retards.")
+            
+            for _, row in retards.iterrows():
+                j = abs(int(row["Jours"]))
+                with st.container(border=True):
+                    c1, c2 = st.columns([3, 1])
+                    with c1:
+                        st.markdown(f"🔴 **{row['Nom_Matériel']}**")
+                        st.markdown(f"👤 {row['Personne']} {('· 📞 ' + row['Contact']) if row.get('Contact') else ''}")
+                        st.markdown(f"📅 Prévu le {row['Date_Retour_Prévu'].strftime('%d/%m/%Y')}")
+                    with c2:
+                        st.markdown(f"**En retard**")
+                        st.markdown(f"**de {j} jour(s)**")
+
+            for _, row in imminent.iterrows():
+                j = int(row["Jours"])
+                with st.container(border=True):
+                    c1, c2 = st.columns([3, 1])
+                    with c1:
+                        st.markdown(f"🟠 **{row['Nom_Matériel']}**")
+                        st.markdown(f"👤 {row['Personne']} {('· 📞 ' + row['Contact']) if row.get('Contact') else ''}")
+                        st.markdown(f"📅 Prévu le {row['Date_Retour_Prévu'].strftime('%d/%m/%Y')}")
+                    with c2:
+                        if j == 0:
+                            st.markdown("**Aujourd'hui !**")
+                        else:
+                            st.markdown(f"**Dans {j} jour(s)**")
+
+            if not a_venir.empty:
+                with st.expander(f"📅 Retours à venir ({len(a_venir)} article(s))"):
+                    for _, row in a_venir.iterrows():
+                        j = int(row["Jours"])
+                        st.markdown(
+                            f"🟡 **{row['Nom_Matériel']}** — "
+                            f"👤 {row['Personne']} — "
+                            f"📅 {row['Date_Retour_Prévu'].strftime('%d/%m/%Y')} "
+                            f"*(dans {j} jours)*"
+                        )
+
+        except Exception as e:
+            st.info(f"Impossible de calculer les retards : {e}")
     else:
-        st.info("Aucune date de retour renseignée.")
+        st.info("Aucun prêt en cours avec date de retour renseignée.")
 else:
     st.info("Aucun mouvement enregistré.")
+
+st.divider()
+
+# ── Derniers mouvements ───────────────────────────────────────────────────────
+st.subheader("⚡ Derniers mouvements")
+
+ICONS = {
+    "Prêt sortant":         "📤",
+    "Retour":               "📥",
+    "Achat":                "🛒",
+    "Don reçu":             "🎁",
+    "Prêt entrant":         "📦",
+    "Location":             "🔵",
+    "Vente":                "💶",
+    "Don sortant":          "❤️",
+    "Mis en réparation":    "🔧",
+    "Retour de réparation": "✅",
+    "Hors service":         "❌",
+}
+
+if df_mv.empty:
+    st.info("Aucun mouvement enregistré.")
+else:
+    recent = df_mv.sort_values("Date", ascending=False).head(10)
+    for _, row in recent.iterrows():
+        icon = ICONS.get(row.get("Type_Mouvement", ""), "🔄")
+        type_mv = row.get("Type_Mouvement", "?")
+        nom     = row.get("Nom_Matériel", "?")
+        date_mv = row.get("Date", "?")
+        personne = row.get("Personne", "")
+        contact  = row.get("Contact", "")
+        notes    = row.get("Notes", "")
+        retour_prevu = row.get("Date_Retour_Prévu", "")
+        retour_effectif = row.get("Date_Retour_Effectif", "")
+
+        with st.container(border=True):
+            c1, c2 = st.columns([3, 1])
+            with c1:
+                st.markdown(f"{icon} **{nom}** — {type_mv}")
+                if personne:
+                    line = f"👤 {personne}"
+                    if contact:
+                        line += f" · 📞 {contact}"
+                    st.markdown(line)
+                if retour_prevu:
+                    st.markdown(f"📅 Retour prévu : {retour_prevu}")
+                if retour_effectif:
+                    st.markdown(f"✅ Retour effectif : {retour_effectif}")
+                if notes:
+                    st.markdown(f"💬 *{notes}*")
+            with c2:
+                st.markdown(f"**{date_mv}**")
 
 st.divider()
 st.caption("ErgoStock • Cabinet d'ergothérapie • Données stockées dans Google Sheets")

@@ -8,29 +8,6 @@ from utils.gsheets import init_sheets, get_materiel, get_mouvements, STATUS_COLO
 
 st.markdown("""
 <style>
-.qr-fixed {
-    position: fixed;
-    bottom: 20px;
-    left: 0;
-    width: 18rem;
-    padding: 0 1rem;
-    z-index: 999;
-}
-.qr-fixed a {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    background: #FF4B4B;
-    color: white !important;
-    text-decoration: none !important;
-    padding: 12px 16px;
-    border-radius: 10px;
-    font-weight: 700;
-    font-size: 1rem;
-    box-shadow: 0 4px 12px rgba(255,75,75,0.4);
-}
-.qr-fixed a:hover { background: #cc3c3c; }
 .qr-card {
     background: linear-gradient(135deg, #FF4B4B, #ff7676);
     border-radius: 14px;
@@ -47,14 +24,6 @@ st.markdown("""
 .qr-card div p  { margin: 0; font-size: 0.85rem; opacity: 0.85; }
 </style>
 """, unsafe_allow_html=True)
-
-# Bouton fixe en bas de sidebar
-st.sidebar.markdown(
-    '<div class="qr-fixed">'
-    '<a href="/7_Scanner_QR" target="_self">📷 Scanner un QR Code</a>'
-    '</div>',
-    unsafe_allow_html=True
-)
 
 if "sheets_ok" not in st.session_state:
     ok, msg = init_sheets()
@@ -76,7 +45,6 @@ def load_data():
 with st.spinner("Chargement des données…"):
     df_mat, df_mv = load_data()
 
-# ── KPIs ──────────────────────────────────────────────────────────────────────
 total       = len(df_mat)
 disponible  = len(df_mat[df_mat["Statut"] == "Disponible"])    if not df_mat.empty else 0
 en_pret     = len(df_mat[df_mat["Statut"] == "En prêt"])       if not df_mat.empty else 0
@@ -95,7 +63,6 @@ with col6: st.metric("🟠 En réparation", reparation)
 
 st.divider()
 
-# ── Bouton QR scanner ─────────────────────────────────────────────────────────
 qr_col, _ = st.columns([1, 2])
 with qr_col:
     st.markdown("""
@@ -112,7 +79,6 @@ with qr_col:
 
 st.divider()
 
-# ── Matériel sorti ────────────────────────────────────────────────────────────
 left, right = st.columns([2, 1])
 
 with left:
@@ -131,9 +97,7 @@ with left:
         cols_show = ["Statut", "Nom", "Catégorie", "Personne", "Contact", "Date_Retour_Prévu"]
         cols_show = [c for c in cols_show if c in sorti.columns]
         st.dataframe(
-            sorti[cols_show].rename(columns={
-                "Statut": "État", "Date_Retour_Prévu": "Retour prévu"
-            }),
+            sorti[cols_show].rename(columns={"Statut": "État", "Date_Retour_Prévu": "Retour prévu"}),
             use_container_width=True, hide_index=True,
         )
 
@@ -155,7 +119,6 @@ with right:
 
 st.divider()
 
-# ── Retours en retard ─────────────────────────────────────────────────────────
 st.subheader("⏰ Retours en retard ou proches")
 if not df_mv.empty:
     today = datetime.now().date()
@@ -166,9 +129,7 @@ if not df_mv.empty:
     ].copy()
     if not df_retours.empty:
         try:
-            df_retours["Date_Retour_Prévu"] = pd.to_datetime(
-                df_retours["Date_Retour_Prévu"], errors="coerce"
-            )
+            df_retours["Date_Retour_Prévu"] = pd.to_datetime(df_retours["Date_Retour_Prévu"], errors="coerce")
             df_retours = df_retours.dropna(subset=["Date_Retour_Prévu"])
             df_retours["Jours restants"] = df_retours["Date_Retour_Prévu"].dt.date.apply(
                 lambda d: (d - today).days

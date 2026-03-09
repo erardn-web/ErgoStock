@@ -82,7 +82,7 @@ CATEGORIES = [
 ]
 
 ETATS = ["Neuf", "Très bon", "Bon", "Correct", "Usagé", "À réparer"]
-TYPES_PERSONNE = ["Patient", "Famille", "Professionnel", "Donateur", "Prêteur", "Autre"]
+TYPES_PERSONNE = ["Patient", "Professionnel", "Autre"]
 
 
 # ── Connexion ─────────────────────────────────────────────────────────────────
@@ -269,7 +269,6 @@ def upload_photo_to_drive(image_bytes: bytes, filename: str) -> str:
         import requests
 
         api_key = "1bce8a9184c42475f79f73c5e2f3c60c"
-
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
         response = requests.post(

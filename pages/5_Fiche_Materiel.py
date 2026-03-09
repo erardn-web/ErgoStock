@@ -24,27 +24,77 @@ if df_mat.empty:
     st.info("Aucun matériel enregistré.")
     st.stop()
 
+# ── Sélection via filtres ──────────────────────────────────────────────────────
+# Support lien direct via query param
 params = st.query_params
 preselect_id = params.get("mat_id", "")
 
-mat_options = {
-    f"[{r['ID']}] {r['Nom']}": r['ID']
-    for _, r in df_mat.iterrows()
-}
+with st.expander("🔍 Rechercher un article", expanded=True):
+    fc1, fc2, fc3 = st.columns(3)
+    with fc1:
+        search = st.text_input("Recherche (nom, ID…)", "")
+    with fc2:
+        statuts = ["Tous"] + sorted(df_mat["Statut"].dropna().unique().tolist())
+        filtre_statut = st.selectbox("Statut", statuts)
+    with fc3:
+        cats = ["Toutes"] + sorted(df_mat["Catégorie"].dropna().unique().tolist())
+        filtre_cat = st.selectbox("Catégorie", cats)
 
-default_idx = 0
-if preselect_id:
-    keys = list(mat_options.keys())
-    ids  = list(mat_options.values())
-    if preselect_id in ids:
-        default_idx = ids.index(preselect_id)
+filtered = df_mat.copy()
+if search:
+    mask = (
+        filtered["Nom"].str.contains(search, case=False, na=False) |
+        filtered["ID"].str.contains(search, case=False, na=False) |
+        filtered["Description"].str.contains(search, case=False, na=False)
+    )
+    filtered = filtered[mask]
+if filtre_statut != "Tous":
+    filtered = filtered[filtered["Statut"] == filtre_statut]
+if filtre_cat != "Toutes":
+    filtered = filtered[filtered["Catégorie"] == filtre_cat]
 
-mat_label = st.selectbox("Choisir un article", list(mat_options.keys()), index=default_idx)
-mat_id = mat_options[mat_label]
+st.caption(f"**{len(filtered)}** article(s)")
+
+# Tableau cliquable
+display_df = filtered[["ID", "Nom", "Catégorie", "État", "Statut"]].copy()
+display_df["Statut"] = display_df["Statut"].apply(
+    lambda s: f"{STATUS_COLORS.get(s, '⚪')} {s}"
+)
+
+# Pré-sélection via query param
+default_row = None
+if preselect_id and preselect_id in filtered["ID"].values:
+    default_row = filtered[filtered["ID"] == preselect_id].index[0]
+
+selected = st.dataframe(
+    display_df,
+    use_container_width=True,
+    hide_index=True,
+    on_select="rerun",
+    selection_mode="single-row",
+)
+
+# Gestion sélection via query param ou clic
+mat_id = None
+if preselect_id and preselect_id in df_mat["ID"].values and not (
+    selected and selected["selection"]["rows"]
+):
+    mat_id = preselect_id
+elif selected and selected["selection"]["rows"]:
+    idx = selected["selection"]["rows"][0]
+    mat_id = filtered.iloc[idx]["ID"]
+    # Mettre à jour le query param
+    st.query_params["mat_id"] = mat_id
+
+if not mat_id:
+    st.info("👆 Cliquez sur un article pour voir sa fiche.")
+    st.stop()
+
 row = df_mat[df_mat["ID"] == mat_id].iloc[0]
 
 st.divider()
 
+# ── Fiche ──────────────────────────────────────────────────────────────────────
 col_photo, col_info, col_qr = st.columns([2, 3, 2])
 
 with col_photo:
@@ -90,6 +140,7 @@ with col_qr:
 
 st.divider()
 
+# ── Historique ─────────────────────────────────────────────────────────────────
 st.subheader("📜 Historique de cet article")
 hist = get_historique_materiel(mat_id)
 if hist.empty:
@@ -118,6 +169,7 @@ else:
 
 st.divider()
 
+# ── Édition ────────────────────────────────────────────────────────────────────
 with st.expander("✏️ Modifier les informations"):
     with st.form("form_edit"):
         e1, e2 = st.columns(2)
@@ -130,10 +182,10 @@ with st.expander("✏️ Modifier les informations"):
                                     index=ETATS.index(row["État"])
                                     if row.get("État") in ETATS else 0)
         with e2:
-            new_val   = st.text_input("Valeur (€)", value=str(row.get("Valeur_EUR", "")))
+            new_val  = st.text_input("Valeur (€)", value=str(row.get("Valeur_EUR", "")))
 
         new_desc  = st.text_area("Description", value=row.get("Description", ""))
-        new_notes = st.text_area("Notes", value=row.get("Notes", ""))
+        new_notes = st.text_area("Notes",       value=row.get("Notes", ""))
         save_btn  = st.form_submit_button("💾 Enregistrer les modifications", type="primary")
 
     # Photo en dehors du formulaire

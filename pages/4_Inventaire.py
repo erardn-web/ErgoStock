@@ -73,7 +73,7 @@ if view_mode == "🗂️ Tableau":
         idx = selected["selection"]["rows"][0]
         mat_id = filtered.iloc[idx]["ID"]
         st.query_params["mat_id"] = mat_id
-        st.switch_page("pages/5_Fiche_Materiel.py")
+        st.switch_page("pages/3_Fiche_Materiel.py")
 
 else:
     cols_per_row = 3

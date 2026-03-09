@@ -49,56 +49,62 @@ if df_mat.empty:
 
 # Pré-sélection via lien depuis fiche matériel
 preselect_mat_id = st.query_params.get("mat_id", "")
-
-# ── Étape 1 : Sélection du matériel ──────────────────────────────────────────
-st.subheader("1️⃣ Sélectionner le matériel")
-
-with st.expander("🔍 Filtres", expanded=not bool(preselect_mat_id)):
-    fc1, fc2, fc3 = st.columns(3)
-    with fc1:
-        search = st.text_input("Recherche (nom, ID…)", "")
-    with fc2:
-        statuts = ["Tous"] + sorted(df_mat["Statut"].dropna().unique().tolist())
-        filtre_statut = st.selectbox("Statut", statuts)
-    with fc3:
-        cats = ["Toutes"] + sorted(df_mat["Catégorie"].dropna().unique().tolist())
-        filtre_cat = st.selectbox("Catégorie", cats)
-
-filtered = df_mat.copy()
-if search:
-    mask = (
-        filtered["Nom"].str.contains(search, case=False, na=False) |
-        filtered["ID"].str.contains(search, case=False, na=False)
-    )
-    filtered = filtered[mask]
-if filtre_statut != "Tous":
-    filtered = filtered[filtered["Statut"] == filtre_statut]
-if filtre_cat != "Toutes":
-    filtered = filtered[filtered["Catégorie"] == filtre_cat]
-
-st.caption(f"**{len(filtered)}** article(s)")
-
-display_df = filtered[["ID", "Nom", "Catégorie", "État", "Statut"]].copy()
-display_df["Statut"] = display_df["Statut"].apply(lambda s: f"{STATUS_COLORS.get(s, '⚪')} {s}")
-
-selected = st.dataframe(
-    display_df, use_container_width=True, hide_index=True,
-    on_select="rerun", selection_mode="single-row",
-)
-
-# Résoudre le mat_id : depuis query param ou depuis le tableau
 mat_id = None
-if preselect_mat_id and preselect_mat_id in df_mat["ID"].values and not (
-    selected and selected["selection"]["rows"]
-):
+
+# ── Si arrivée depuis la fiche : article direct, pas de tableau ───────────────
+if preselect_mat_id and preselect_mat_id in df_mat["ID"].values:
     mat_id = preselect_mat_id
-elif selected and selected["selection"]["rows"]:
+    found  = df_mat[df_mat["ID"] == mat_id].iloc[0]
+    st.info(f"📦 Article sélectionné depuis la fiche : **{found['Nom']}**")
+    if st.button("🔄 Changer d'article", use_container_width=False):
+        st.query_params.clear()
+        st.rerun()
+
+# ── Sinon : sélection via tableau avec filtres ────────────────────────────────
+else:
+    st.subheader("1️⃣ Sélectionner le matériel")
+
+    with st.expander("🔍 Filtres", expanded=True):
+        fc1, fc2, fc3 = st.columns(3)
+        with fc1:
+            search = st.text_input("Recherche (nom, ID…)", "")
+        with fc2:
+            statuts = ["Tous"] + sorted(df_mat["Statut"].dropna().unique().tolist())
+            filtre_statut = st.selectbox("Statut", statuts)
+        with fc3:
+            cats = ["Toutes"] + sorted(df_mat["Catégorie"].dropna().unique().tolist())
+            filtre_cat = st.selectbox("Catégorie", cats)
+
+    filtered = df_mat.copy()
+    if search:
+        mask = (
+            filtered["Nom"].str.contains(search, case=False, na=False) |
+            filtered["ID"].str.contains(search, case=False, na=False)
+        )
+        filtered = filtered[mask]
+    if filtre_statut != "Tous":
+        filtered = filtered[filtered["Statut"] == filtre_statut]
+    if filtre_cat != "Toutes":
+        filtered = filtered[filtered["Catégorie"] == filtre_cat]
+
+    st.caption(f"**{len(filtered)}** article(s)")
+
+    display_df = filtered[["ID", "Nom", "Catégorie", "État", "Statut"]].copy()
+    display_df["Statut"] = display_df["Statut"].apply(lambda s: f"{STATUS_COLORS.get(s, '⚪')} {s}")
+
+    selected = st.dataframe(
+        display_df, use_container_width=True, hide_index=True,
+        on_select="rerun", selection_mode="single-row",
+    )
+
+    if not selected or not selected["selection"]["rows"]:
+        st.info("👆 Cliquez sur un article dans le tableau pour continuer.")
+        st.stop()
+
     idx    = selected["selection"]["rows"][0]
     mat_id = filtered.iloc[idx]["ID"]
-    st.query_params.clear()
 
 if not mat_id:
-    st.info("👆 Cliquez sur un article dans le tableau pour continuer.")
     st.stop()
 
 row = df_mat[df_mat["ID"] == mat_id].iloc[0]
@@ -116,7 +122,7 @@ if row.get("Photo_URL", ""):
 
 st.divider()
 
-# ── Étape 2 : Type de mouvement ───────────────────────────────────────────────
+# ── Type de mouvement ─────────────────────────────────────────────────────────
 st.subheader("2️⃣ Type de mouvement")
 
 statut_actuel   = row["Statut"]
@@ -147,7 +153,7 @@ if type_mv in ["Retour", "Retour de réparation"]:
 
 st.divider()
 
-# ── Étape 3 : Personne ────────────────────────────────────────────────────────
+# ── Personne ──────────────────────────────────────────────────────────────────
 need_person  = type_mv not in ["Hors service", "Retour de réparation"]
 p_nom_final  = ""
 p_contact    = ""
@@ -157,7 +163,6 @@ is_retour    = type_mv == "Retour"
 if need_person:
     st.subheader("3️⃣ Personne concernée")
 
-    # Chercher la personne du dernier mouvement sortant
     personne_retour_nom     = ""
     personne_retour_contact = ""
 
@@ -172,7 +177,6 @@ if need_person:
             personne_retour_contact = dernier.get("Contact", "")
 
     if is_retour and personne_retour_nom:
-        # Retour : personne en lecture seule
         st.info(
             f"👤 **{personne_retour_nom}**"
             + (f" · 📞 {personne_retour_contact}" if personne_retour_contact else "")
@@ -181,7 +185,6 @@ if need_person:
         p_contact   = personne_retour_contact
 
     else:
-        # Autres cas : sélection avec pré-sélection si connu
         personnes_liste = ["— Nouvelle personne —"]
         if not df_p.empty:
             for _, r in df_p.iterrows():
@@ -191,7 +194,6 @@ if need_person:
                     label = f"{r['Prénom']} {r['Nom']} ({r['Téléphone']}) [{r['ID']}]"
                 personnes_liste.append(label)
 
-        # Pré-sélectionner la personne chez qui était l'objet si applicable
         default_idx = 0
         if statut_actuel in ["En prêt", "En location"] and personne_retour_nom:
             for i, label in enumerate(personnes_liste):

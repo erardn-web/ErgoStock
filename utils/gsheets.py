@@ -91,8 +91,7 @@ TYPES_PERSONNE = ["Patient", "Famille", "Professionnel", "Donateur", "Prêteur",
 def get_client():
     creds_dict = dict(st.secrets["gcp_service_account"])
     creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-    client = gspread.authorize(creds)
-    return client
+    return gspread.authorize(creds)
 
 
 def get_spreadsheet():
@@ -264,41 +263,19 @@ def update_personne(p_id: str, data: dict) -> bool:
 # ── Upload photo Google Drive ─────────────────────────────────────────────────
 
 def upload_photo_to_drive(image_bytes: bytes, filename: str) -> str:
-    """Upload une photo sur Google Drive et retourne l'URL publique."""
+    """Upload une photo dans le dossier Drive partagé et retourne l'URL publique."""
     try:
         from googleapiclient.discovery import build
         from googleapiclient.http import MediaIoBaseUpload
         import io
 
+        folder_id = "1BM5O5O0VsSn7_LSgFzUdS7BFPfAI8OeC"
+
         creds_dict = dict(st.secrets["gcp_service_account"])
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         drive_service = build("drive", "v3", credentials=creds)
 
-        # Créer ou trouver le dossier ErgoStock-Photos
-        folder_id = None
-        results = drive_service.files().list(
-            q="name='ErgoStock-Photos' and mimeType='application/vnd.google-apps.folder' and trashed=false",
-            fields="files(id)"
-        ).execute()
-        folders = results.get("files", [])
-        if folders:
-            folder_id = folders[0]["id"]
-        else:
-            folder_metadata = {
-                "name": "ErgoStock-Photos",
-                "mimeType": "application/vnd.google-apps.folder"
-            }
-            folder = drive_service.files().create(
-                body=folder_metadata, fields="id"
-            ).execute()
-            folder_id = folder["id"]
-            # Rendre le dossier public
-            drive_service.permissions().create(
-                fileId=folder_id,
-                body={"type": "anyone", "role": "reader"}
-            ).execute()
-
-        # Upload la photo
+        # Upload dans le dossier partagé
         file_metadata = {"name": filename, "parents": [folder_id]}
         media = MediaIoBaseUpload(io.BytesIO(image_bytes), mimetype="image/jpeg")
         file = drive_service.files().create(

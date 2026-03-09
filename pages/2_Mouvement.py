@@ -13,17 +13,26 @@ st.set_page_config(page_title="Mouvement – ErgoStock", page_icon="🔄", layou
 st.title("🔄 Enregistrer un mouvement")
 st.divider()
 
-@st.cache_data(ttl=60)
-def load_mat():
-    return get_materiel()
+# Tous les mouvements possibles selon le statut
+TRANSITIONS = {
+    "Disponible":    ["Prêt sortant", "Location", "Vente", "Don sortant",
+                      "Mis en réparation", "Hors service"],
+    "En prêt":       ["Retour", "Vente", "Don sortant", "Mis en réparation",
+                      "Location", "Hors service"],
+    "En location":   ["Retour", "Vente", "Don sortant", "Mis en réparation",
+                      "Prêt sortant", "Hors service"],
+    "En réparation": ["Retour de réparation", "Hors service", "Don sortant", "Vente"],
+    "Vendu":         TYPES_MOUVEMENT,
+    "Donné":         TYPES_MOUVEMENT,
+    "Hors service":  TYPES_MOUVEMENT,
+}
 
 @st.cache_data(ttl=60)
-def load_pers():
-    return get_personnes()
-
+def load_mat(): return get_materiel()
 @st.cache_data(ttl=60)
-def load_mv():
-    return get_mouvements()
+def load_pers(): return get_personnes()
+@st.cache_data(ttl=60)
+def load_mv(): return get_mouvements()
 
 with st.spinner("Chargement…"):
     try:
@@ -35,7 +44,7 @@ with st.spinner("Chargement…"):
         st.stop()
 
 if df_mat.empty:
-    st.warning("Aucun matériel enregistré. Commencez par ajouter du matériel.")
+    st.warning("Aucun matériel enregistré.")
     st.stop()
 
 # ── Étape 1 : Sélection du matériel ──────────────────────────────────────────
@@ -98,16 +107,8 @@ st.divider()
 # ── Étape 2 : Type de mouvement ───────────────────────────────────────────────
 st.subheader("2️⃣ Type de mouvement")
 
-statut_actuel = row["Statut"]
-if statut_actuel == "Disponible":
-    types_possibles = ["Prêt sortant", "Location", "Vente", "Don sortant",
-                       "Mis en réparation", "Hors service"]
-elif statut_actuel in ["En prêt", "En location"]:
-    types_possibles = ["Retour"]
-elif statut_actuel == "En réparation":
-    types_possibles = ["Retour de réparation", "Hors service"]
-else:
-    types_possibles = TYPES_MOUVEMENT
+statut_actuel  = row["Statut"]
+types_possibles = TRANSITIONS.get(statut_actuel, TYPES_MOUVEMENT)
 
 type_mv = st.selectbox("Type de mouvement", types_possibles)
 date_mv = st.date_input("Date du mouvement", value=date.today())
@@ -135,40 +136,40 @@ if type_mv in ["Retour", "Retour de réparation"]:
 st.divider()
 
 # ── Étape 3 : Personne ────────────────────────────────────────────────────────
-need_person  = type_mv not in ["Hors service", "Retour de réparation"]
-p_nom_final  = ""
-p_contact    = ""
+need_person = type_mv not in ["Hors service", "Retour de réparation"]
+p_nom_final = ""
+p_contact   = ""
 personne_sel = None
 
 if need_person:
     st.subheader("3️⃣ Personne concernée")
 
-    # ── Si retour : chercher la personne du dernier mouvement sortant ─────────
+    # Pour un retour : chercher la personne du dernier mouvement sortant
     is_retour = type_mv == "Retour"
     personne_retour_nom     = ""
     personne_retour_contact = ""
 
     if is_retour and not df_mv.empty:
-        types_sortants = ["Prêt sortant", "Location"]
         derniers_sortants = df_mv[
             (df_mv["ID_Matériel"] == mat_id) &
-            (df_mv["Type_Mouvement"].isin(types_sortants))
+            (df_mv["Type_Mouvement"].isin(["Prêt sortant", "Location"]))
         ].sort_values("Date", ascending=False)
-
         if not derniers_sortants.empty:
             dernier = derniers_sortants.iloc[0]
             personne_retour_nom     = dernier.get("Personne", "")
             personne_retour_contact = dernier.get("Contact", "")
 
     if is_retour and personne_retour_nom:
-        # Retour : personne pré-remplie, non modifiable
-        st.info(f"👤 **{personne_retour_nom}**" +
-                (f" · 📞 {personne_retour_contact}" if personne_retour_contact else ""))
+        # Retour : personne pré-remplie, affichée en lecture seule
+        st.info(
+            f"👤 **{personne_retour_nom}**"
+            + (f" · 📞 {personne_retour_contact}" if personne_retour_contact else "")
+        )
         p_nom_final = personne_retour_nom
         p_contact   = personne_retour_contact
 
     else:
-        # Autres mouvements ou retour sans historique : sélection libre
+        # Vente directe / don depuis un prêt / autre : sélection libre
         personnes_liste = ["— Nouvelle personne —"]
         if not df_p.empty:
             for _, r in df_p.iterrows():
@@ -178,7 +179,23 @@ if need_person:
                     label = f"{r['Prénom']} {r['Nom']} ({r['Téléphone']}) [{r['ID']}]"
                 personnes_liste.append(label)
 
-        personne_sel = st.selectbox("Sélectionner une personne", personnes_liste)
+        # Si l'objet était chez quelqu'un, pré-sélectionner cette personne par défaut
+        default_idx = 0
+        if statut_actuel in ["En prêt", "En location"] and not df_mv.empty:
+            derniers_sortants = df_mv[
+                (df_mv["ID_Matériel"] == mat_id) &
+                (df_mv["Type_Mouvement"].isin(["Prêt sortant", "Location"]))
+            ].sort_values("Date", ascending=False)
+            if not derniers_sortants.empty:
+                nom_chez = derniers_sortants.iloc[0].get("Personne", "")
+                for i, label in enumerate(personnes_liste):
+                    if nom_chez and nom_chez in label:
+                        default_idx = i
+                        break
+
+        personne_sel = st.selectbox(
+            "Sélectionner une personne", personnes_liste, index=default_idx
+        )
         p_nom = p_prenom = p_tel = p_email = ""
         p_type_new = "Patient"
 
@@ -214,23 +231,24 @@ notes_mv = st.text_area("💬 Notes / Observations", "")
 
 if st.button("💾 Enregistrer le mouvement", type="primary", use_container_width=True):
     errors = []
-    if need_person and not is_retour and personne_sel == "— Nouvelle personne —" and not p_nom.strip():
+    if (need_person and not (is_retour and personne_retour_nom)
+            and personne_sel == "— Nouvelle personne —"
+            and not p_nom.strip()):
         errors.append("Le nom est obligatoire.")
     if errors:
         for e in errors: st.error(e)
     else:
         with st.spinner("Enregistrement…"):
-            if need_person and not is_retour and personne_sel == "— Nouvelle personne —" and p_nom.strip():
+            if (need_person and not (is_retour and personne_retour_nom)
+                    and personne_sel == "— Nouvelle personne —"
+                    and p_nom.strip()):
                 add_personne({
                     "Nom": p_nom.strip(), "Prénom": p_prenom.strip(),
                     "Téléphone": p_tel.strip(), "Email": p_email.strip(),
                     "Type": p_type_new,
                 })
-                if p_type_new == "Professionnel":
-                    p_nom_final = p_nom.strip()
-                else:
-                    p_nom_final = f"{p_prenom} {p_nom}".strip()
-                p_contact = p_tel.strip()
+                p_nom_final = p_nom.strip() if p_type_new == "Professionnel" else f"{p_prenom} {p_nom}".strip()
+                p_contact   = p_tel.strip()
 
             add_mouvement({
                 "ID_Matériel":          mat_id,

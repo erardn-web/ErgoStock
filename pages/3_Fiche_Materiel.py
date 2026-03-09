@@ -123,6 +123,12 @@ with col_qr:
     )
     st.caption("Collez cette étiquette sur le matériel.")
 
+# ── Bouton mouvement ───────────────────────────────────────────────────────────
+st.divider()
+if st.button("🔄 Enregistrer un mouvement pour cet article", type="primary", use_container_width=True):
+    st.query_params["mat_id"] = mat_id
+    st.switch_page("pages/2_Mouvement.py")
+
 st.divider()
 
 # ── Historique ─────────────────────────────────────────────────────────────────

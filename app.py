@@ -1,5 +1,12 @@
 import streamlit as st
 
+st.set_page_config(
+    page_title="ErgoStock – Cabinet d'ergothérapie",
+    page_icon="🏥",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
 pg = st.navigation({
     "": [
         st.Page("app_dashboard.py", title="Tableau de bord", icon="🏥"),

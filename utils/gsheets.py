@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 from datetime import datetime
 import uuid
+import time
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -87,7 +88,7 @@ TYPES_PERSONNE = ["Patient", "Professionnel", "Autre"]
 
 # ── Connexion ─────────────────────────────────────────────────────────────────
 
-@st.cache_resource
+@st.cache_resource(ttl=3600)
 def get_client():
     creds_dict = dict(st.secrets["gcp_service_account"])
     creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
@@ -100,15 +101,22 @@ def get_spreadsheet():
 
 
 def get_or_create_sheet(spreadsheet, name: str, headers: list):
-    try:
-        ws = spreadsheet.worksheet(name)
-        existing = ws.row_values(1)
-        if not existing:
+    for attempt in range(3):
+        try:
+            ws = spreadsheet.worksheet(name)
+            existing = ws.row_values(1)
+            if not existing:
+                ws.append_row(headers)
+            return ws
+        except gspread.exceptions.WorksheetNotFound:
+            ws = spreadsheet.add_worksheet(title=name, rows=2000, cols=len(headers))
             ws.append_row(headers)
-    except gspread.exceptions.WorksheetNotFound:
-        ws = spreadsheet.add_worksheet(title=name, rows=2000, cols=len(headers))
-        ws.append_row(headers)
-    return ws
+            return ws
+        except gspread.exceptions.APIError as e:
+            if attempt < 2:
+                time.sleep(2 ** attempt)
+            else:
+                raise e
 
 
 def init_sheets():
@@ -125,10 +133,22 @@ def init_sheets():
 # ── Lecture ───────────────────────────────────────────────────────────────────
 
 def _safe_df(ws, headers):
-    data = ws.get_all_records(expected_headers=headers)
+    try:
+        data = ws.get_all_records(expected_headers=headers)
+    except Exception:
+        # Headers ne correspondent pas exactement : lecture sans vérification
+        try:
+            data = ws.get_all_records()
+        except Exception:
+            return pd.DataFrame(columns=headers)
     if not data:
         return pd.DataFrame(columns=headers)
-    return pd.DataFrame(data)
+    df = pd.DataFrame(data)
+    # Ajouter les colonnes manquantes avec valeur vide
+    for col in headers:
+        if col not in df.columns:
+            df[col] = ""
+    return df
 
 
 def get_materiel() -> pd.DataFrame:
@@ -140,8 +160,7 @@ def get_materiel() -> pd.DataFrame:
 def get_mouvements() -> pd.DataFrame:
     spreadsheet = get_spreadsheet()
     ws = get_or_create_sheet(spreadsheet, SHEET_MOUVEMENTS, HEADERS_MOUVEMENTS)
-    df = _safe_df(ws, HEADERS_MOUVEMENTS)
-    return df
+    return _safe_df(ws, HEADERS_MOUVEMENTS)
 
 
 def get_personnes() -> pd.DataFrame:

@@ -3,7 +3,7 @@ import pandas as pd
 import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from utils.gsheets import get_materiel, STATUS_COLORS, CATEGORIES
+from utils.gsheets import get_materiel, STATUS_COLORS
 
 st.set_page_config(page_title="Inventaire – ErgoStock", page_icon="📦", layout="wide")
 st.title("📦 Inventaire du matériel")
@@ -17,10 +17,9 @@ with st.spinner("Chargement…"):
     df = load()
 
 if df.empty:
-    st.info("Aucun matériel enregistré. Utilisez **Ajouter du matériel** pour commencer.")
+    st.info("Aucun matériel enregistré. Utilisez Ajouter du matériel pour commencer.")
     st.stop()
 
-# ── Filtres ────────────────────────────────────────────────────────────────────
 with st.expander("🔍 Filtres", expanded=True):
     fc1, fc2, fc3, fc4 = st.columns(4)
     with fc1:
@@ -52,7 +51,6 @@ if filtre_etat != "Tous":
 
 st.caption(f"**{len(filtered)}** article(s) affiché(s)")
 
-# ── Vue tableau ────────────────────────────────────────────────────────────────
 view_mode = st.radio("Affichage", ["🗂️ Tableau", "🖼️ Galerie"], horizontal=True)
 
 if view_mode == "🗂️ Tableau":
@@ -61,9 +59,23 @@ if view_mode == "🗂️ Tableau":
     display_df["Statut"] = display_df["Statut"].apply(
         lambda s: f"{STATUS_COLORS.get(s, '⚪')} {s}"
     )
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-else:  # Galerie
+    # Sélection d'une ligne pour aller sur la fiche
+    selected = st.dataframe(
+        display_df,
+        use_container_width=True,
+        hide_index=True,
+        on_select="rerun",
+        selection_mode="single-row",
+    )
+
+    if selected and selected["selection"]["rows"]:
+        idx = selected["selection"]["rows"][0]
+        mat_id = filtered.iloc[idx]["ID"]
+        st.query_params["mat_id"] = mat_id
+        st.switch_page("pages/5_Fiche_Materiel.py")
+
+else:
     cols_per_row = 3
     items = filtered.to_dict("records")
     for i in range(0, len(items), cols_per_row):
@@ -82,13 +94,10 @@ else:  # Galerie
                     f"**État :** {item.get('État','')}  \n"
                     f"**Statut :** {item.get('Statut','')}"
                 )
-                st.page_link(
-                    "pages/5_Fiche_Materiel.py",
-                    label="Voir la fiche",
-                    icon="🔍",
-                )
+                if st.button("🔍 Voir la fiche", key=f"btn_{item['ID']}"):
+                    st.query_params["mat_id"] = item["ID"]
+                    st.switch_page("pages/5_Fiche_Materiel.py")
 
-# ── Export CSV ─────────────────────────────────────────────────────────────────
 st.divider()
 csv = filtered.to_csv(index=False).encode("utf-8")
 st.download_button(

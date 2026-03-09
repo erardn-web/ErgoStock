@@ -5,7 +5,7 @@ import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.gsheets import (
-    get_materiel, get_personnes, add_mouvement, add_personne,
+    get_materiel, get_personnes, get_mouvements, add_mouvement, add_personne,
     update_materiel, TYPES_MOUVEMENT, STATUS_COLORS, ETATS, TYPES_PERSONNE
 )
 
@@ -21,18 +21,18 @@ def load_mat():
 def load_pers():
     return get_personnes()
 
-with st.spinner("Chargement du matériel..."):
+@st.cache_data(ttl=60)
+def load_mv():
+    return get_mouvements()
+
+with st.spinner("Chargement…"):
     try:
         df_mat = load_mat()
+        df_p   = load_pers()
+        df_mv  = load_mv()
     except Exception as e:
         st.error(f"Erreur de connexion Google Sheets : {e}")
         st.stop()
-
-with st.spinner("Chargement des personnes..."):
-    try:
-        df_p = load_pers()
-    except Exception as e:
-        df_p = pd.DataFrame()
 
 if df_mat.empty:
     st.warning("Aucun matériel enregistré. Commencez par ajouter du matériel.")
@@ -143,58 +143,84 @@ personne_sel = None
 if need_person:
     st.subheader("3️⃣ Personne concernée")
 
-    personnes_liste = ["— Nouvelle personne —"]
-    if not df_p.empty:
-        for _, r in df_p.iterrows():
-            if r.get("Type") == "Professionnel":
-                label = f"{r['Nom']} (Pro) [{r['ID']}]"
-            else:
-                label = f"{r['Prénom']} {r['Nom']} ({r['Téléphone']}) [{r['ID']}]"
-            personnes_liste.append(label)
+    # ── Si retour : chercher la personne du dernier mouvement sortant ─────────
+    is_retour = type_mv == "Retour"
+    personne_retour_nom     = ""
+    personne_retour_contact = ""
 
-    personne_sel = st.selectbox("Sélectionner une personne", personnes_liste)
-    p_nom = p_prenom = p_tel = p_email = ""
-    p_type_new = "Patient"
+    if is_retour and not df_mv.empty:
+        types_sortants = ["Prêt sortant", "Location"]
+        derniers_sortants = df_mv[
+            (df_mv["ID_Matériel"] == mat_id) &
+            (df_mv["Type_Mouvement"].isin(types_sortants))
+        ].sort_values("Date", ascending=False)
 
-    if personne_sel == "— Nouvelle personne —":
-        p_type_new = st.selectbox("Type", TYPES_PERSONNE, key="mv_type_new")
-        if p_type_new == "Professionnel":
-            p_nom    = st.text_input("Nom de la société *")
-            p_prenom = ""
-            p_tel    = st.text_input("Téléphone")
-            p_email  = st.text_input("Email")
-        else:
-            pc1, pc2 = st.columns(2)
-            with pc1:
-                p_nom   = st.text_input("Nom *")
-                p_tel   = st.text_input("Téléphone")
-            with pc2:
-                p_prenom = st.text_input("Prénom")
-                p_email  = st.text_input("Email")
+        if not derniers_sortants.empty:
+            dernier = derniers_sortants.iloc[0]
+            personne_retour_nom     = dernier.get("Personne", "")
+            personne_retour_contact = dernier.get("Contact", "")
+
+    if is_retour and personne_retour_nom:
+        # Retour : personne pré-remplie, non modifiable
+        st.info(f"👤 **{personne_retour_nom}**" +
+                (f" · 📞 {personne_retour_contact}" if personne_retour_contact else ""))
+        p_nom_final = personne_retour_nom
+        p_contact   = personne_retour_contact
+
     else:
-        p_id_sel = personne_sel.split("[")[-1].rstrip("]")
+        # Autres mouvements ou retour sans historique : sélection libre
+        personnes_liste = ["— Nouvelle personne —"]
         if not df_p.empty:
-            p_row = df_p[df_p["ID"] == p_id_sel]
-            if not p_row.empty:
-                pr = p_row.iloc[0]
-                if pr.get("Type") == "Professionnel":
-                    p_nom_final = pr.get("Nom", "")
+            for _, r in df_p.iterrows():
+                if r.get("Type") == "Professionnel":
+                    label = f"{r['Nom']} (Pro) [{r['ID']}]"
                 else:
-                    p_nom_final = f"{pr.get('Prénom','')} {pr.get('Nom','')}".strip()
-                p_contact = pr.get("Téléphone", "")
+                    label = f"{r['Prénom']} {r['Nom']} ({r['Téléphone']}) [{r['ID']}]"
+                personnes_liste.append(label)
+
+        personne_sel = st.selectbox("Sélectionner une personne", personnes_liste)
+        p_nom = p_prenom = p_tel = p_email = ""
+        p_type_new = "Patient"
+
+        if personne_sel == "— Nouvelle personne —":
+            p_type_new = st.selectbox("Type", TYPES_PERSONNE, key="mv_type_new")
+            if p_type_new == "Professionnel":
+                p_nom    = st.text_input("Nom de la société *")
+                p_prenom = ""
+                p_tel    = st.text_input("Téléphone")
+                p_email  = st.text_input("Email")
+            else:
+                pc1, pc2 = st.columns(2)
+                with pc1:
+                    p_nom   = st.text_input("Nom *")
+                    p_tel   = st.text_input("Téléphone")
+                with pc2:
+                    p_prenom = st.text_input("Prénom")
+                    p_email  = st.text_input("Email")
+        else:
+            p_id_sel = personne_sel.split("[")[-1].rstrip("]")
+            if not df_p.empty:
+                p_row = df_p[df_p["ID"] == p_id_sel]
+                if not p_row.empty:
+                    pr = p_row.iloc[0]
+                    if pr.get("Type") == "Professionnel":
+                        p_nom_final = pr.get("Nom", "")
+                    else:
+                        p_nom_final = f"{pr.get('Prénom','')} {pr.get('Nom','')}".strip()
+                    p_contact = pr.get("Téléphone", "")
 
 st.divider()
 notes_mv = st.text_area("💬 Notes / Observations", "")
 
 if st.button("💾 Enregistrer le mouvement", type="primary", use_container_width=True):
     errors = []
-    if need_person and personne_sel == "— Nouvelle personne —" and not p_nom.strip():
+    if need_person and not is_retour and personne_sel == "— Nouvelle personne —" and not p_nom.strip():
         errors.append("Le nom est obligatoire.")
     if errors:
         for e in errors: st.error(e)
     else:
         with st.spinner("Enregistrement…"):
-            if need_person and personne_sel == "— Nouvelle personne —" and p_nom.strip():
+            if need_person and not is_retour and personne_sel == "— Nouvelle personne —" and p_nom.strip():
                 add_personne({
                     "Nom": p_nom.strip(), "Prénom": p_prenom.strip(),
                     "Téléphone": p_tel.strip(), "Email": p_email.strip(),

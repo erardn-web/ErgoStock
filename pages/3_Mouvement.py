@@ -184,3 +184,56 @@ if need_person:
             if not p_row.empty:
                 pr = p_row.iloc[0]
                 if pr.get("Type") == "Professionnel":
+                    p_nom_final = pr.get("Nom", "")
+                else:
+                    p_nom_final = f"{pr.get('Prénom','')} {pr.get('Nom','')}".strip()
+                p_contact = pr.get("Téléphone", "")
+
+st.divider()
+notes_mv = st.text_area("💬 Notes / Observations", "")
+
+if st.button("💾 Enregistrer le mouvement", type="primary", use_container_width=True):
+    errors = []
+    if need_person and personne_sel == "— Nouvelle personne —" and not p_nom.strip():
+        errors.append("Le nom est obligatoire.")
+
+    if errors:
+        for e in errors:
+            st.error(e)
+    else:
+        with st.spinner("Enregistrement…"):
+            if need_person and personne_sel == "— Nouvelle personne —" and p_nom.strip():
+                add_personne({
+                    "Nom":       p_nom.strip(),
+                    "Prénom":    p_prenom.strip(),
+                    "Téléphone": p_tel.strip(),
+                    "Email":     p_email.strip(),
+                    "Type":      p_type_new,
+                })
+                if p_type_new == "Professionnel":
+                    p_nom_final = p_nom.strip()
+                else:
+                    p_nom_final = f"{p_prenom} {p_nom}".strip()
+                p_contact = p_tel.strip()
+
+            add_mouvement({
+                "ID_Matériel":          mat_id,
+                "Nom_Matériel":         row["Nom"],
+                "Date":                 str(date_mv),
+                "Type_Mouvement":       type_mv,
+                "Personne":             p_nom_final if need_person else "",
+                "Contact":              p_contact   if need_person else "",
+                "Date_Retour_Prévu":    str(date_retour) if date_retour else "",
+                "Date_Retour_Effectif": str(date_mv) if type_mv == "Retour" else "",
+                "Notes":                notes_mv,
+            })
+
+            if new_etat and new_etat != row["État"]:
+                update_materiel(mat_id, {"État": new_etat})
+
+        st.success(
+            f"✅ Mouvement **{type_mv}** enregistré pour **{row['Nom']}**"
+            + (f" — {p_nom_final}" if need_person and p_nom_final else "")
+            + (f" — État mis à jour : **{new_etat}**" if new_etat and new_etat != row["État"] else "")
+        )
+        st.cache_data.clear()

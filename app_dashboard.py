@@ -87,20 +87,20 @@ if not df_mv.empty and not df_mat.empty:
             )
             df_retours = df_retours.sort_values("Jours")
 
-            retards   = df_retours[df_retours["Jours"] < 0]
-            imminent  = df_retours[(df_retours["Jours"] >= 0) & (df_retours["Jours"] <= 7)]
-            a_venir   = df_retours[df_retours["Jours"] > 7]
+            retards  = df_retours[df_retours["Jours"] < 0]
+            imminent = df_retours[(df_retours["Jours"] >= 0) & (df_retours["Jours"] <= 7)]
+            a_venir  = df_retours[df_retours["Jours"] > 7]
 
             if retards.empty and imminent.empty:
                 st.success("✅ Aucun retour en retard ou imminent.")
-            
+
             for _, row in retards.iterrows():
                 j = abs(int(row["Jours"]))
                 with st.container(border=True):
                     c1, c2 = st.columns([3, 1])
                     with c1:
                         st.markdown(f"🔴 **{row['Nom_Matériel']}**")
-                        st.markdown(f"👤 {row['Personne']} {('· 📞 ' + row['Contact']) if row.get('Contact') else ''}")
+                        st.markdown(f"👤 {row['Personne']}" + (f" · 📞 {row['Contact']}" if row.get('Contact') else ""))
                         st.markdown(f"📅 Prévu le {row['Date_Retour_Prévu'].strftime('%d/%m/%Y')}")
                     with c2:
                         st.markdown(f"**En retard**")
@@ -112,7 +112,7 @@ if not df_mv.empty and not df_mat.empty:
                     c1, c2 = st.columns([3, 1])
                     with c1:
                         st.markdown(f"🟠 **{row['Nom_Matériel']}**")
-                        st.markdown(f"👤 {row['Personne']} {('· 📞 ' + row['Contact']) if row.get('Contact') else ''}")
+                        st.markdown(f"👤 {row['Personne']}" + (f" · 📞 {row['Contact']}" if row.get('Contact') else ""))
                         st.markdown(f"📅 Prévu le {row['Date_Retour_Prévu'].strftime('%d/%m/%Y')}")
                     with c2:
                         if j == 0:
@@ -160,16 +160,26 @@ ICONS = {
 if df_mv.empty:
     st.info("Aucun mouvement enregistré.")
 else:
-    recent = df_mv.sort_values("Date", ascending=False).head(10)
+    # Tri par horodatage si disponible, sinon par date
+    if "Horodatage" in df_mv.columns and df_mv["Horodatage"].astype(bool).any():
+        try:
+            df_mv["_sort"] = pd.to_datetime(df_mv["Horodatage"], errors="coerce")
+            recent = df_mv.sort_values("_sort", ascending=False).head(10)
+            df_mv.drop(columns=["_sort"], inplace=True)
+        except Exception:
+            recent = df_mv.sort_values("Date", ascending=False).head(10)
+    else:
+        recent = df_mv.sort_values("Date", ascending=False).head(10)
+
     for _, row in recent.iterrows():
-        icon = ICONS.get(row.get("Type_Mouvement", ""), "🔄")
+        icon    = ICONS.get(row.get("Type_Mouvement", ""), "🔄")
         type_mv = row.get("Type_Mouvement", "?")
         nom     = row.get("Nom_Matériel", "?")
         date_mv = row.get("Date", "?")
-        personne = row.get("Personne", "")
-        contact  = row.get("Contact", "")
-        notes    = row.get("Notes", "")
-        retour_prevu = row.get("Date_Retour_Prévu", "")
+        personne        = row.get("Personne", "")
+        contact         = row.get("Contact", "")
+        notes           = row.get("Notes", "")
+        retour_prevu    = row.get("Date_Retour_Prévu", "")
         retour_effectif = row.get("Date_Retour_Effectif", "")
 
         with st.container(border=True):

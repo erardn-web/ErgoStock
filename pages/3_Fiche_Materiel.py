@@ -24,7 +24,6 @@ if df_mat.empty:
     st.info("Aucun matériel enregistré.")
     st.stop()
 
-# ── Filtres ────────────────────────────────────────────────────────────────────
 params       = st.query_params
 preselect_id = params.get("mat_id", "")
 
@@ -79,7 +78,6 @@ if not mat_id:
 row = df_mat[df_mat["ID"] == mat_id].iloc[0]
 st.divider()
 
-# ── Fiche ──────────────────────────────────────────────────────────────────────
 col_photo, col_info, col_qr = st.columns([2, 3, 2])
 
 with col_photo:
@@ -126,7 +124,7 @@ with col_qr:
 # ── Bouton mouvement ───────────────────────────────────────────────────────────
 st.divider()
 if st.button("🔄 Enregistrer un mouvement pour cet article", type="primary", use_container_width=True):
-    st.query_params["mat_id"] = mat_id
+    st.session_state["mouvement_mat_id"] = mat_id
     st.switch_page("pages/2_Mouvement.py")
 
 st.divider()
@@ -153,7 +151,6 @@ else:
 
 st.divider()
 
-# ── Édition ────────────────────────────────────────────────────────────────────
 with st.expander("✏️ Modifier les informations"):
     with st.form("form_edit"):
         e1, e2 = st.columns(2)

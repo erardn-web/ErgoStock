@@ -4,7 +4,7 @@ from datetime import date, timedelta
 import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from utils.gsheets import get_mouvements, get_materiel, TYPES_MOUVEMENT
+from utils.gsheets import get_mouvements, TYPES_MOUVEMENT
 
 st.set_page_config(page_title="Historique – ErgoStock", page_icon="📜", layout="wide")
 st.title("📜 Historique des mouvements")
@@ -12,16 +12,15 @@ st.divider()
 
 @st.cache_data(ttl=30)
 def load():
-    return get_mouvements(), get_materiel()
+    return get_mouvements()
 
 with st.spinner("Chargement…"):
-    df_mv, df_mat = load()
+    df_mv = load()
 
 if df_mv.empty:
     st.info("Aucun mouvement enregistré pour le moment.")
     st.stop()
 
-# ── Filtres ────────────────────────────────────────────────────────────────────
 with st.expander("🔍 Filtres", expanded=True):
     fc1, fc2, fc3, fc4 = st.columns(4)
     with fc1:
@@ -36,7 +35,6 @@ with st.expander("🔍 Filtres", expanded=True):
 
 filtered = df_mv.copy()
 
-# Filtre date
 try:
     filtered["Date_dt"] = pd.to_datetime(filtered["Date"], errors="coerce")
     filtered = filtered[
@@ -60,7 +58,6 @@ if filtre_type != "Tous":
 filtered = filtered.sort_values("Date", ascending=False)
 st.caption(f"**{len(filtered)}** mouvement(s) affiché(s)")
 
-# ── Tableau ────────────────────────────────────────────────────────────────────
 ICONS = {
     "Prêt sortant":         "📤",
     "Retour":               "📥",
@@ -76,9 +73,7 @@ ICONS = {
 }
 
 display = filtered.copy()
-display["Type_Mouvement"] = display["Type_Mouvement"].apply(
-    lambda t: f"{ICONS.get(t, '🔄')} {t}"
-)
+display["Type_Mouvement"] = display["Type_Mouvement"].apply(lambda t: f"{ICONS.get(t, '🔄')} {t}")
 
 cols_show = [c for c in [
     "Date", "Nom_Matériel", "Type_Mouvement", "Personne",
@@ -96,27 +91,6 @@ st.dataframe(
     hide_index=True,
 )
 
-# ── Stats rapides ──────────────────────────────────────────────────────────────
-st.divider()
-st.subheader("📊 Statistiques sur la période")
-if not filtered.empty:
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        prets = len(filtered[filtered["Type_Mouvement"].str.contains("Prêt sortant", na=False)])
-        st.metric("Prêts sortants", prets)
-    with col2:
-        retours = len(filtered[filtered["Type_Mouvement"].str.contains("Retour", na=False)])
-        st.metric("Retours", retours)
-    with col3:
-        ventes = len(filtered[filtered["Type_Mouvement"].str.contains("Vente", na=False)])
-        st.metric("Ventes", ventes)
-
-    st.bar_chart(
-        filtered["Type_Mouvement"].str.replace(r"^[^ ]+ ", "", regex=True)
-                                  .value_counts()
-    )
-
-# ── Export ─────────────────────────────────────────────────────────────────────
 st.divider()
 csv = filtered.drop(columns=["Date_dt"], errors="ignore").to_csv(index=False).encode("utf-8")
 st.download_button(

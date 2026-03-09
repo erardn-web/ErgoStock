@@ -55,7 +55,16 @@ if search:
 if filtre_type != "Tous":
     filtered = filtered[filtered["Type_Mouvement"] == filtre_type]
 
-filtered = filtered.sort_values("Date", ascending=False)
+# Tri par horodatage si disponible, sinon par date
+if "Horodatage" in filtered.columns and filtered["Horodatage"].astype(bool).any():
+    try:
+        filtered["_sort"] = pd.to_datetime(filtered["Horodatage"], errors="coerce")
+        filtered = filtered.sort_values("_sort", ascending=False).drop(columns=["_sort"])
+    except Exception:
+        filtered = filtered.sort_values("Date", ascending=False)
+else:
+    filtered = filtered.sort_values("Date", ascending=False)
+
 st.caption(f"**{len(filtered)}** mouvement(s) affiché(s)")
 
 ICONS = {

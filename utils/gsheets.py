@@ -259,3 +259,68 @@ def update_personne(p_id: str, data: dict) -> bool:
     except Exception as e:
         st.error(f"Erreur mise à jour personne : {e}")
         return False
+def upload_photo_to_drive(image_bytes: bytes, filename: str) -> str:
+    """Upload une photo sur Google Drive et retourne l'URL publique."""
+    try:
+        from googleapiclient.discovery import build
+        from googleapiclient.http import MediaIoBaseUpload
+        import io
+
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+        drive_service = build("drive", "v3", credentials=creds)
+
+        # Créer ou trouver le dossier ErgoStock-Photos
+        folder_id = None
+        results = drive_service.files().list(
+            q="name='ErgoStock-Photos' and mimeType='application/vnd.google-apps.folder' and trashed=false",
+            fields="files(id)"
+        ).execute()
+        folders = results.get("files", [])
+        if folders:
+            folder_id = folders[0]["id"]
+        else:
+            folder_metadata = {
+                "name": "ErgoStock-Photos",
+                "mimeType": "application/vnd.google-apps.folder"
+            }
+            folder = drive_service.files().create(body=folder_metadata, fields="id").execute()
+            folder_id = folder["id"]
+            # Rendre le dossier public
+            drive_service.permissions().create(
+                fileId=folder_id,
+                body={"type": "anyone", "role": "reader"}
+            ).execute()
+
+        # Upload la photo
+        file_metadata = {"name": filename, "parents": [folder_id]}
+        media = MediaIoBaseUpload(io.BytesIO(image_bytes), mimetype="image/jpeg")
+        file = drive_service.files().create(
+            body=file_metadata, media_body=media, fields="id"
+        ).execute()
+        file_id = file["id"]
+
+        # Rendre public
+        drive_service.permissions().create(
+            fileId=file_id,
+            body={"type": "anyone", "role": "reader"}
+        ).execute()
+
+        return f"https://drive.google.com/uc?id={file_id}"
+
+    except Exception as e:
+        st.error(f"Erreur upload photo : {e}")
+        return ""
+```
+
+Et ajoutez `google-api-python-client` dans `requirements.txt` :
+```
+streamlit>=1.32.0
+gspread>=6.0.0
+google-auth>=2.28.0
+google-api-python-client>=2.0.0
+pandas>=2.0.0
+qrcode[pil]>=7.4.2
+Pillow>=10.0.0
+requests>=2.31.0
+streamlit-qrcode-scanner>=0.0.4

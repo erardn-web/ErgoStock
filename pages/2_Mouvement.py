@@ -27,6 +27,9 @@ TRANSITIONS = {
     "Hors service":  TYPES_MOUVEMENT,
 }
 
+# Mouvements depuis la réparation qui permettent de changer l'état
+DEPUIS_REPARATION = ["Retour de réparation", "Prêt sortant", "Location", "Vente", "Don sortant"]
+
 @st.cache_data(ttl=60)
 def load_mat(): return get_materiel()
 @st.cache_data(ttl=60)
@@ -47,20 +50,20 @@ if df_mat.empty:
     st.warning("Aucun matériel enregistré.")
     st.stop()
 
-# Pré-sélection via lien depuis fiche matériel
-preselect_mat_id = st.query_params.get("mat_id", "")
+# Pré-sélection : session_state prioritaire sur query_params
+preselect_mat_id = st.session_state.pop("mouvement_mat_id", "") or st.query_params.get("mat_id", "")
 mat_id = None
 
-# ── Si arrivée depuis la fiche : article direct, pas de tableau ───────────────
+# ── Si arrivée depuis la fiche : article direct ───────────────────────────────
 if preselect_mat_id and preselect_mat_id in df_mat["ID"].values:
     mat_id = preselect_mat_id
     found  = df_mat[df_mat["ID"] == mat_id].iloc[0]
-    st.info(f"📦 Article sélectionné depuis la fiche : **{found['Nom']}**")
-    if st.button("🔄 Changer d'article", use_container_width=False):
+    st.info(f"📦 Article sélectionné : **{found['Nom']}**")
+    if st.button("🔄 Changer d'article"):
         st.query_params.clear()
         st.rerun()
 
-# ── Sinon : sélection via tableau avec filtres ────────────────────────────────
+# ── Sinon : sélection via tableau ─────────────────────────────────────────────
 else:
     st.subheader("1️⃣ Sélectionner le matériel")
 
@@ -136,15 +139,20 @@ date_retour = None
 if need_retour:
     date_retour = st.date_input("📅 Date de retour prévue", value=None)
 
-# État au retour
+# ── État — affiché si retour OU si sortie directe depuis réparation ───────────
 new_etat = None
-if type_mv in ["Retour", "Retour de réparation"]:
+need_etat = (
+    type_mv in ["Retour", "Retour de réparation"] or
+    (statut_actuel == "En réparation" and type_mv in DEPUIS_REPARATION)
+)
+
+if need_etat:
     st.divider()
-    st.markdown("**📋 État du matériel au retour**")
+    st.markdown("**📋 État du matériel**")
     etat_actuel_idx = ETATS.index(row["État"]) if row.get("État") in ETATS else 0
     new_etat = st.selectbox(
-        "État constaté au retour", ETATS, index=etat_actuel_idx,
-        help="Modifiez si l'état du matériel a changé"
+        "État constaté", ETATS, index=etat_actuel_idx,
+        help="Modifiez si l'état du matériel a changé suite à la réparation"
     )
     if new_etat != row["État"]:
         st.warning(f"⚠️ L'état passera de **{row['État']}** → **{new_etat}**")

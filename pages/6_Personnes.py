@@ -22,35 +22,56 @@ with tab1:
     if df_p.empty:
         st.info("Aucune personne enregistrée.")
     else:
-        search = st.text_input("🔍 Rechercher", "")
-        filtre_type = st.selectbox("Type", ["Tous"] + TYPES_PERSONNE)
+        fc1, fc2 = st.columns([3, 1])
+        with fc1:
+            search = st.text_input("🔍 Rechercher (prénom, nom, ou les deux)", "")
+        with fc2:
+            filtre_type = st.selectbox("Type", ["Tous"] + TYPES_PERSONNE)
 
         filtered = df_p.copy()
+
+        # Combinaison prénom + nom pour la recherche
+        filtered["NomComplet"] = (
+            filtered["Prénom"].fillna("") + " " + filtered["Nom"].fillna("")
+        ).str.strip()
+
         if search:
-            mask = (
-                filtered["Nom"].str.contains(search, case=False, na=False) |
-                filtered["Prénom"].str.contains(search, case=False, na=False) |
+            termes = search.lower().split()
+            # Tous les termes doivent être trouvés quelque part dans le nom complet
+            mask = filtered["NomComplet"].apply(
+                lambda n: all(t in n.lower() for t in termes)
+            )
+            # Aussi chercher dans téléphone et email
+            mask2 = (
                 filtered["Téléphone"].str.contains(search, case=False, na=False) |
                 filtered["Email"].str.contains(search, case=False, na=False)
             )
-            filtered = filtered[mask]
+            filtered = filtered[mask | mask2]
+
         if filtre_type != "Tous":
             filtered = filtered[filtered["Type"] == filtre_type]
 
         st.caption(f"**{len(filtered)}** personne(s)")
-        st.dataframe(filtered, use_container_width=True, hide_index=True)
 
-        # Fiche détail
-        st.divider()
-        st.subheader("🔍 Détail d'une personne")
-        if not filtered.empty:
-            p_options = {
-                f"[{r['ID']}] {r['Prénom']} {r['Nom']}": r['ID']
-                for _, r in filtered.iterrows()
-            }
-            p_label = st.selectbox("Choisir une personne", list(p_options.keys()))
-            p_id = p_options[p_label]
+        # Tableau cliquable
+        display = filtered[["ID", "Prénom", "Nom", "Téléphone", "Email", "Type"]].copy()
+        selected = st.dataframe(
+            display,
+            use_container_width=True,
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row",
+        )
+
+        if not selected or not selected["selection"]["rows"]:
+            st.info("👆 Cliquez sur une personne pour voir sa fiche.")
+        else:
+            idx = selected["selection"]["rows"][0]
+            p_id = filtered.iloc[idx]["ID"]
             p_row = df_p[df_p["ID"] == p_id].iloc[0]
+
+            st.divider()
+            st.subheader(f"📋 Fiche — {p_row.get('Prénom','')} {p_row.get('Nom','')}")
 
             c1, c2 = st.columns(2)
             with c1:
@@ -61,34 +82,36 @@ with tab1:
                 st.markdown(f"**Email :** {p_row.get('Email','')}")
                 st.markdown(f"**Notes :** {p_row.get('Notes','')}")
 
-            # Historique mouvements de cette personne
+            # Historique mouvements
             if not df_mv.empty:
+                nom_complet = f"{p_row.get('Prénom','')} {p_row.get('Nom','')}".strip()
                 p_hist = df_mv[
-                    df_mv["Personne"].str.contains(
-                        f"{p_row.get('Prénom','')} {p_row.get('Nom','')}".strip(),
-                        case=False, na=False
-                    )
+                    df_mv["Personne"].str.contains(nom_complet, case=False, na=False)
                 ].sort_values("Date", ascending=False)
                 if not p_hist.empty:
                     st.subheader("📜 Historique des emprunts")
-                    cols = [c for c in ["Date","Nom_Matériel","Type_Mouvement",
-                                         "Date_Retour_Prévu","Date_Retour_Effectif","Notes"]
+                    cols = [c for c in ["Date", "Nom_Matériel", "Type_Mouvement",
+                                        "Date_Retour_Prévu", "Date_Retour_Effectif", "Notes"]
                             if c in p_hist.columns]
                     st.dataframe(p_hist[cols], use_container_width=True, hide_index=True)
+                else:
+                    st.info("Aucun mouvement enregistré pour cette personne.")
 
             # Modifier
             with st.expander("✏️ Modifier"):
                 with st.form("form_edit_p"):
                     ec1, ec2 = st.columns(2)
                     with ec1:
-                        e_nom    = st.text_input("Nom",    value=p_row.get("Nom",""))
+                        e_nom    = st.text_input("Nom",       value=p_row.get("Nom",""))
                         e_tel    = st.text_input("Téléphone", value=p_row.get("Téléphone",""))
                     with ec2:
-                        e_prenom = st.text_input("Prénom", value=p_row.get("Prénom",""))
-                        e_email  = st.text_input("Email",  value=p_row.get("Email",""))
-                    e_type  = st.selectbox("Type", TYPES_PERSONNE,
-                                           index=TYPES_PERSONNE.index(p_row["Type"])
-                                           if p_row.get("Type") in TYPES_PERSONNE else 0)
+                        e_prenom = st.text_input("Prénom",    value=p_row.get("Prénom",""))
+                        e_email  = st.text_input("Email",     value=p_row.get("Email",""))
+                    e_type  = st.selectbox(
+                        "Type", TYPES_PERSONNE,
+                        index=TYPES_PERSONNE.index(p_row["Type"])
+                        if p_row.get("Type") in TYPES_PERSONNE else 0
+                    )
                     e_notes = st.text_area("Notes", value=p_row.get("Notes",""))
                     if st.form_submit_button("💾 Enregistrer", type="primary"):
                         ok = update_personne(p_id, {

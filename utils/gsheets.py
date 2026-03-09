@@ -31,13 +31,13 @@ HEADERS_PERSONNES = [
 ]
 
 STATUS_COLORS = {
-    "Disponible":   "🟢",
-    "En prêt":      "🟡",
-    "En location":  "🔵",
-    "Vendu":        "🔴",
-    "Donné":        "⚫",
-    "En réparation":"🟠",
-    "Hors service": "❌",
+    "Disponible":    "🟢",
+    "En prêt":       "🟡",
+    "En location":   "🔵",
+    "Vendu":         "🔴",
+    "Donné":         "⚫",
+    "En réparation": "🟠",
+    "Hors service":  "❌",
 }
 
 TYPES_MOUVEMENT = [
@@ -85,13 +85,14 @@ ETATS = ["Neuf", "Très bon", "Bon", "Correct", "Usagé", "À réparer"]
 TYPES_PERSONNE = ["Patient", "Famille", "Professionnel", "Donateur", "Prêteur", "Autre"]
 
 
-# ── connexion ────────────────────────────────────────────────────────────────
+# ── Connexion ─────────────────────────────────────────────────────────────────
 
 @st.cache_resource
 def get_client():
     creds_dict = dict(st.secrets["gcp_service_account"])
     creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-    return gspread.authorize(creds)
+    client = gspread.authorize(creds)
+    return client
 
 
 def get_spreadsheet():
@@ -102,7 +103,6 @@ def get_spreadsheet():
 def get_or_create_sheet(spreadsheet, name: str, headers: list):
     try:
         ws = spreadsheet.worksheet(name)
-        # ensure headers exist
         existing = ws.row_values(1)
         if not existing:
             ws.append_row(headers)
@@ -123,7 +123,7 @@ def init_sheets():
         return False, f"❌ Erreur de connexion : {e}"
 
 
-# ── lecture ───────────────────────────────────────────────────────────────────
+# ── Lecture ───────────────────────────────────────────────────────────────────
 
 def _safe_df(ws, headers):
     data = ws.get_all_records(expected_headers=headers)
@@ -157,7 +157,7 @@ def get_historique_materiel(mat_id: str) -> pd.DataFrame:
     return df[df["ID_Matériel"] == mat_id].sort_values("Date", ascending=False)
 
 
-# ── écriture ──────────────────────────────────────────────────────────────────
+# ── Écriture ──────────────────────────────────────────────────────────────────
 
 def _gen_id() -> str:
     return str(uuid.uuid4())[:8].upper()
@@ -259,6 +259,10 @@ def update_personne(p_id: str, data: dict) -> bool:
     except Exception as e:
         st.error(f"Erreur mise à jour personne : {e}")
         return False
+
+
+# ── Upload photo Google Drive ─────────────────────────────────────────────────
+
 def upload_photo_to_drive(image_bytes: bytes, filename: str) -> str:
     """Upload une photo sur Google Drive et retourne l'URL publique."""
     try:
@@ -284,7 +288,9 @@ def upload_photo_to_drive(image_bytes: bytes, filename: str) -> str:
                 "name": "ErgoStock-Photos",
                 "mimeType": "application/vnd.google-apps.folder"
             }
-            folder = drive_service.files().create(body=folder_metadata, fields="id").execute()
+            folder = drive_service.files().create(
+                body=folder_metadata, fields="id"
+            ).execute()
             folder_id = folder["id"]
             # Rendre le dossier public
             drive_service.permissions().create(
@@ -296,11 +302,13 @@ def upload_photo_to_drive(image_bytes: bytes, filename: str) -> str:
         file_metadata = {"name": filename, "parents": [folder_id]}
         media = MediaIoBaseUpload(io.BytesIO(image_bytes), mimetype="image/jpeg")
         file = drive_service.files().create(
-            body=file_metadata, media_body=media, fields="id"
+            body=file_metadata,
+            media_body=media,
+            fields="id"
         ).execute()
         file_id = file["id"]
 
-        # Rendre public
+        # Rendre le fichier public
         drive_service.permissions().create(
             fileId=file_id,
             body={"type": "anyone", "role": "reader"}
@@ -311,16 +319,3 @@ def upload_photo_to_drive(image_bytes: bytes, filename: str) -> str:
     except Exception as e:
         st.error(f"Erreur upload photo : {e}")
         return ""
-```
-
-Et ajoutez `google-api-python-client` dans `requirements.txt` :
-```
-streamlit>=1.32.0
-gspread>=6.0.0
-google-auth>=2.28.0
-google-api-python-client>=2.0.0
-pandas>=2.0.0
-qrcode[pil]>=7.4.2
-Pillow>=10.0.0
-requests>=2.31.0
-streamlit-qrcode-scanner>=0.0.4

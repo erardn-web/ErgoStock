@@ -6,6 +6,8 @@ import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 from utils.gsheets import init_sheets, get_materiel, get_mouvements, STATUS_COLORS
 
+# ── PAS de set_page_config ici, il est dans app.py ───────────────────────────
+
 st.markdown("""
 <style>
 .qr-fixed {
@@ -45,19 +47,12 @@ st.markdown("""
 .qr-card div { color: white; }
 .qr-card div h3 { margin: 0; font-size: 1.2rem; }
 .qr-card div p  { margin: 0; font-size: 0.85rem; opacity: 0.85; }
-
-/* Cacher les boutons QR sur desktop */
-@media (min-width: 768px) {
-    .qr-fixed        { display: none !important; }
-    .qr-card-wrapper { display: none !important; }
-}
 </style>
 """, unsafe_allow_html=True)
 
-# Bouton fixe en bas de sidebar — mobile uniquement
 st.sidebar.markdown(
     '<div class="qr-fixed">'
-    '<a href="/scanner-qr" target="_self">📷 Scanner un QR Code</a>'
+    '<a href="/7_Scanner_QR" target="_self">📷 Scanner un QR Code</a>'
     '</div>',
     unsafe_allow_html=True
 )
@@ -101,9 +96,10 @@ with col6: st.metric("🟠 En réparation", reparation)
 
 st.divider()
 
-# ── Bouton QR — mobile uniquement ─────────────────────────────────────────────
-st.markdown("""
-<div class="qr-card-wrapper">
+# ── Bouton QR scanner ─────────────────────────────────────────────────────────
+qr_col, _ = st.columns([1, 2])
+with qr_col:
+    st.markdown("""
     <div class="qr-card">
         <span class="icon">📷</span>
         <div>
@@ -111,15 +107,9 @@ st.markdown("""
             <p>Identifiez un article et enregistrez un mouvement rapidement</p>
         </div>
     </div>
-    <a href="/scanner-qr" target="_self"
-       style="display:block; background:#FF4B4B; color:white; text-align:center;
-              padding:12px; border-radius:8px; text-decoration:none;
-              font-weight:bold; font-size:1rem; margin-top:8px;
-              box-shadow: 0 4px 12px rgba(255,75,75,0.4);">
-        📷 Ouvrir le scanner
-    </a>
-</div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+    if st.button("📷 Ouvrir le scanner", type="primary", use_container_width=True):
+        st.switch_page("pages/7_Scanner_QR.py")
 
 st.divider()
 
@@ -142,9 +132,7 @@ with left:
         cols_show = ["Statut", "Nom", "Catégorie", "Personne", "Contact", "Date_Retour_Prévu"]
         cols_show = [c for c in cols_show if c in sorti.columns]
         st.dataframe(
-            sorti[cols_show].rename(columns={
-                "Statut": "État", "Date_Retour_Prévu": "Retour prévu"
-            }),
+            sorti[cols_show].rename(columns={"Statut": "État", "Date_Retour_Prévu": "Retour prévu"}),
             use_container_width=True, hide_index=True,
         )
 
@@ -177,9 +165,7 @@ if not df_mv.empty:
     ].copy()
     if not df_retours.empty:
         try:
-            df_retours["Date_Retour_Prévu"] = pd.to_datetime(
-                df_retours["Date_Retour_Prévu"], errors="coerce"
-            )
+            df_retours["Date_Retour_Prévu"] = pd.to_datetime(df_retours["Date_Retour_Prévu"], errors="coerce")
             df_retours = df_retours.dropna(subset=["Date_Retour_Prévu"])
             df_retours["Jours restants"] = df_retours["Date_Retour_Prévu"].dt.date.apply(
                 lambda d: (d - today).days

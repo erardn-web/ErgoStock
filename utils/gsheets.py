@@ -268,10 +268,7 @@ def upload_photo_to_drive(image_bytes: bytes, filename: str) -> str:
         import base64
         import requests
 
-        api_key = st.secrets.get("imgbb_api_key", "")
-        if not api_key:
-            st.error("imgbb_api_key manquant dans les secrets Streamlit.")
-            return ""
+        api_key = "1bce8a9184c42475f79f73c5e2f3c60c"
 
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 

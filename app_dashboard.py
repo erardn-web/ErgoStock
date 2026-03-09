@@ -6,12 +6,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 from utils.gsheets import init_sheets, get_materiel, get_mouvements, STATUS_COLORS
 
-st.set_page_config(
-    page_title="ErgoStock – Tableau de bord",
-    page_icon="🏥",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+# ── PAS de set_page_config ici, il est dans app.py ───────────────────────────
 
 st.markdown("""
 <style>
@@ -200,20 +195,3 @@ else:
 
 st.divider()
 st.caption("ErgoStock • Cabinet d'ergothérapie • Données stockées dans Google Sheets")
-```
-
----
-
-**Résultat dans la sidebar :**
-```
-🏥 Tableau de bord
-───────────────────────
-── Quotidien ──────────
-  ➕ Ajouter du matériel
-  🔄 Mouvement
-  🔍 Fiche matériel
-── Consultation ────────
-  📦 Inventaire
-  📜 Historique
-  👥 Personnes
-  📷 Scanner QR

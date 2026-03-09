@@ -12,61 +12,104 @@ st.set_page_config(page_title="Mouvement – ErgoStock", page_icon="🔄", layou
 st.title("🔄 Enregistrer un mouvement")
 st.divider()
 
-@st.cache_data(ttl=30)
-def load():
-    return get_materiel(), get_personnes()
+@st.cache_data(ttl=60)
+def load_mat():
+    return get_materiel()
 
-df_mat, df_p = load()
+@st.cache_data(ttl=60)
+def load_pers():
+    return get_personnes()
+
+with st.spinner("Chargement du matériel..."):
+    try:
+        df_mat = load_mat()
+    except Exception as e:
+        st.error(f"Erreur de connexion Google Sheets : {e}")
+        st.stop()
+
+with st.spinner("Chargement des personnes..."):
+    try:
+        df_p = load_pers()
+    except Exception as e:
+        df_p = __import__('pandas').DataFrame()
 
 if df_mat.empty:
     st.warning("Aucun matériel enregistré. Commencez par ajouter du matériel.")
     st.stop()
 
-# ── Recherche du matériel ──────────────────────────────────────────────────────
+# ── Étape 1 : Sélection du matériel avec filtres ──────────────────────────────
 st.subheader("1️⃣ Sélectionner le matériel")
-search_mat = st.text_input("Rechercher par nom ou ID", "")
 
-if search_mat:
+import pandas as pd
+
+with st.expander("🔍 Filtres", expanded=True):
+    fc1, fc2, fc3 = st.columns(3)
+    with fc1:
+        search = st.text_input("Recherche (nom, ID…)", "")
+    with fc2:
+        statuts = ["Tous"] + sorted(df_mat["Statut"].dropna().unique().tolist())
+        filtre_statut = st.selectbox("Statut", statuts)
+    with fc3:
+        cats = ["Toutes"] + sorted(df_mat["Catégorie"].dropna().unique().tolist())
+        filtre_cat = st.selectbox("Catégorie", cats)
+
+filtered = df_mat.copy()
+if search:
     mask = (
-        df_mat["Nom"].str.contains(search_mat, case=False, na=False) |
-        df_mat["ID"].str.contains(search_mat, case=False, na=False)
+        filtered["Nom"].str.contains(search, case=False, na=False) |
+        filtered["ID"].str.contains(search, case=False, na=False)
     )
-    df_filtered = df_mat[mask]
-else:
-    df_filtered = df_mat
+    filtered = filtered[mask]
+if filtre_statut != "Tous":
+    filtered = filtered[filtered["Statut"] == filtre_statut]
+if filtre_cat != "Toutes":
+    filtered = filtered[filtered["Catégorie"] == filtre_cat]
 
-if df_filtered.empty:
-    st.info("Aucun résultat.")
+st.caption(f"**{len(filtered)}** article(s)")
+
+# Tableau cliquable
+display_df = filtered[["ID", "Nom", "Catégorie", "État", "Statut"]].copy()
+display_df["Statut"] = display_df["Statut"].apply(
+    lambda s: f"{STATUS_COLORS.get(s, '⚪')} {s}"
+)
+
+selected = st.dataframe(
+    display_df,
+    use_container_width=True,
+    hide_index=True,
+    on_select="rerun",
+    selection_mode="single-row",
+)
+
+# Vérifier si une ligne est sélectionnée
+if not selected or not selected["selection"]["rows"]:
+    st.info("👆 Cliquez sur un article dans le tableau pour continuer.")
     st.stop()
 
-mat_options = {
-    f"{STATUS_COLORS.get(r['Statut'], '⚪')} [{r['ID']}] {r['Nom']} — {r['Statut']}": r['ID']
-    for _, r in df_filtered.iterrows()
-}
-mat_label = st.selectbox("Matériel", list(mat_options.keys()))
-mat_id = mat_options[mat_label]
-mat_row = df_mat[df_mat["ID"] == mat_id].iloc[0]
-
-# Infos matériel
-c1, c2, c3 = st.columns(3)
-c1.metric("Nom", mat_row["Nom"])
-c2.metric("Statut actuel", f"{STATUS_COLORS.get(mat_row['Statut'], '⚪')} {mat_row['Statut']}")
-c3.metric("Catégorie", mat_row["Catégorie"])
-
-if mat_row.get("Photo_URL", ""):
-    with st.expander("📷 Photo"):
-        st.image(mat_row["Photo_URL"], width=200)
+idx = selected["selection"]["rows"][0]
+mat_id = filtered.iloc[idx]["ID"]
+row = df_mat[df_mat["ID"] == mat_id].iloc[0]
 
 st.divider()
 
-# ── Type de mouvement ──────────────────────────────────────────────────────────
+# Infos article sélectionné
+c1, c2, c3 = st.columns(3)
+c1.metric("Nom", row["Nom"])
+c2.metric("Statut", f"{STATUS_COLORS.get(row['Statut'], '⚪')} {row['Statut']}")
+c3.metric("Catégorie", row["Catégorie"])
+
+if row.get("Photo_URL", ""):
+    with st.expander("📷 Photo"):
+        st.image(row["Photo_URL"], width=200)
+
+st.divider()
+
+# ── Étape 2 : Type de mouvement ───────────────────────────────────────────────
 st.subheader("2️⃣ Type de mouvement")
 
-# Filtrer les types selon le statut actuel
-statut_actuel = mat_row["Statut"]
+statut_actuel = row["Statut"]
 if statut_actuel == "Disponible":
-    types_possibles = ["Prêt sortant", "Location", "Vente", "Don sortant",
-                        "Mis en réparation", "Hors service"]
+    types_possibles = ["Prêt sortant", "Location", "Vente", "Don sortant", "Mis en réparation", "Hors service"]
 elif statut_actuel in ["En prêt", "En location"]:
     types_possibles = ["Retour"]
 elif statut_actuel == "En réparation":
@@ -84,11 +127,14 @@ if need_retour:
 
 st.divider()
 
-# ── Personne ───────────────────────────────────────────────────────────────────
+# ── Étape 3 : Personne ────────────────────────────────────────────────────────
 need_person = type_mv not in ["Hors service", "Retour de réparation"]
+p_nom_final = ""
+p_contact = ""
 
 if need_person:
     st.subheader("3️⃣ Personne concernée")
+
     personnes_liste = ["— Nouvelle personne —"]
     if not df_p.empty:
         personnes_liste += [
@@ -97,9 +143,6 @@ if need_person:
         ]
 
     personne_sel = st.selectbox("Sélectionner une personne", personnes_liste)
-    p_id_sel = ""
-    p_nom_final = ""
-    p_contact = ""
 
     if personne_sel == "— Nouvelle personne —":
         pc1, pc2 = st.columns(2)
@@ -112,17 +155,16 @@ if need_person:
             p_type   = st.selectbox("Type", ["Patient", "Famille", "Professionnel", "Autre"])
     else:
         p_id_sel = personne_sel.split("[")[-1].rstrip("]")
-        p_row = df_p[df_p["ID"] == p_id_sel].iloc[0] if not df_p.empty else None
-        if p_row is not None:
-            p_nom_final = f"{p_row.get('Prénom','')} {p_row.get('Nom','')}".strip()
-            p_contact   = p_row.get("Téléphone", "")
+        p_row = df_p[df_p["ID"] == p_id_sel] if not df_p.empty else None
+        if p_row is not None and not p_row.empty:
+            p_nom_final = f"{p_row.iloc[0].get('Prénom','')} {p_row.iloc[0].get('Nom','')}".strip()
+            p_contact   = p_row.iloc[0].get("Téléphone", "")
 
 st.divider()
 
 notes_mv = st.text_area("💬 Notes / Observations", "")
 
-if st.button("💾 Enregistrer le mouvement", type="primary"):
-    # Validation
+if st.button("💾 Enregistrer le mouvement", type="primary", use_container_width=True):
     errors = []
     if need_person and personne_sel == "— Nouvelle personne —" and not p_nom.strip():
         errors.append("Le nom de la personne est obligatoire.")
@@ -132,9 +174,8 @@ if st.button("💾 Enregistrer le mouvement", type="primary"):
             st.error(e)
     else:
         with st.spinner("Enregistrement…"):
-            # Créer la personne si nouvelle
             if need_person and personne_sel == "— Nouvelle personne —" and p_nom.strip():
-                new_p_id = add_personne({
+                add_personne({
                     "Nom":       p_nom.strip(),
                     "Prénom":    p_prenom.strip(),
                     "Téléphone": p_tel.strip(),
@@ -146,7 +187,7 @@ if st.button("💾 Enregistrer le mouvement", type="primary"):
 
             add_mouvement({
                 "ID_Matériel":          mat_id,
-                "Nom_Matériel":         mat_row["Nom"],
+                "Nom_Matériel":         row["Nom"],
                 "Date":                 str(date_mv),
                 "Type_Mouvement":       type_mv,
                 "Personne":             p_nom_final if need_person else "",
@@ -157,7 +198,7 @@ if st.button("💾 Enregistrer le mouvement", type="primary"):
             })
 
         st.success(
-            f"✅ Mouvement **{type_mv}** enregistré pour **{mat_row['Nom']}**"
-            + (f" — Personne : {p_nom_final}" if need_person and p_nom_final else "")
+            f"✅ Mouvement **{type_mv}** enregistré pour **{row['Nom']}**"
+            + (f" — {p_nom_final}" if need_person and p_nom_final else "")
         )
         st.cache_data.clear()

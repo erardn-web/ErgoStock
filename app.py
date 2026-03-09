@@ -13,6 +13,64 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ── CSS : icône QR fixe en bas de sidebar + style bouton ─────────────────────
+st.markdown("""
+<style>
+/* Bouton QR fixe en bas de la sidebar */
+.qr-fixed {
+    position: fixed;
+    bottom: 20px;
+    left: 0;
+    width: 18rem;
+    padding: 0 1rem;
+    z-index: 999;
+}
+.qr-fixed a {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: #FF4B4B;
+    color: white !important;
+    text-decoration: none !important;
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 1rem;
+    box-shadow: 0 4px 12px rgba(255,75,75,0.4);
+    transition: background 0.2s;
+}
+.qr-fixed a:hover {
+    background: #cc3c3c;
+}
+
+/* Carte bouton QR dashboard */
+.qr-card {
+    background: linear-gradient(135deg, #FF4B4B, #ff7676);
+    border-radius: 14px;
+    padding: 20px 28px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    box-shadow: 0 4px 16px rgba(255,75,75,0.3);
+    margin-bottom: 8px;
+}
+.qr-card span.icon { font-size: 2.5rem; }
+.qr-card div { color: white; }
+.qr-card div h3 { margin: 0; font-size: 1.2rem; }
+.qr-card div p  { margin: 0; font-size: 0.85rem; opacity: 0.85; }
+</style>
+""", unsafe_allow_html=True)
+
+# ── Bouton QR fixe en bas de la sidebar ──────────────────────────────────────
+st.sidebar.markdown(
+    '<div class="qr-fixed">'
+    '<a href="/7_Scanner_QR" target="_self">📷 Scanner un QR Code</a>'
+    '</div>',
+    unsafe_allow_html=True
+)
+
+# ── Connexion ─────────────────────────────────────────────────────────────────
 if "sheets_ok" not in st.session_state:
     ok, msg = init_sheets()
     st.session_state["sheets_ok"] = ok
@@ -33,6 +91,7 @@ def load_data():
 with st.spinner("Chargement des données…"):
     df_mat, df_mv = load_data()
 
+# ── KPIs ──────────────────────────────────────────────────────────────────────
 total       = len(df_mat)
 disponible  = len(df_mat[df_mat["Statut"] == "Disponible"])  if not df_mat.empty else 0
 en_pret     = len(df_mat[df_mat["Statut"] == "En prêt"])     if not df_mat.empty else 0
@@ -43,7 +102,7 @@ reparation  = len(df_mat[df_mat["Statut"] == "En réparation"]) if not df_mat.em
 
 col1, col2, col3, col4, col5, col6 = st.columns(6)
 with col1:
-    st.metric("📦 Total matériel", total)
+    st.metric("📦 Total", total)
 with col2:
     st.metric("🟢 Disponible", disponible)
 with col3:
@@ -57,6 +116,24 @@ with col6:
 
 st.divider()
 
+# ── Bouton QR scanner bien visible ───────────────────────────────────────────
+qr_col, _ = st.columns([1, 2])
+with qr_col:
+    st.markdown("""
+    <div class="qr-card">
+        <span class="icon">📷</span>
+        <div>
+            <h3>Scanner un QR Code</h3>
+            <p>Identifiez un article et enregistrez un mouvement rapidement</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button("📷 Ouvrir le scanner", type="primary", use_container_width=True):
+        st.switch_page("pages/7_Scanner_QR.py")
+
+st.divider()
+
+# ── Matériel sorti ────────────────────────────────────────────────────────────
 left, right = st.columns([2, 1])
 
 with left:
@@ -109,6 +186,7 @@ with right:
 
 st.divider()
 
+# ── Retours en retard ─────────────────────────────────────────────────────────
 st.subheader("⏰ Retours en retard ou proches")
 if not df_mv.empty:
     today = datetime.now().date()
@@ -120,9 +198,13 @@ if not df_mv.empty:
 
     if not df_retours.empty:
         try:
-            df_retours["Date_Retour_Prévu"] = pd.to_datetime(df_retours["Date_Retour_Prévu"], errors="coerce")
+            df_retours["Date_Retour_Prévu"] = pd.to_datetime(
+                df_retours["Date_Retour_Prévu"], errors="coerce"
+            )
             df_retours = df_retours.dropna(subset=["Date_Retour_Prévu"])
-            df_retours["Jours restants"] = df_retours["Date_Retour_Prévu"].dt.date.apply(lambda d: (d - today).days)
+            df_retours["Jours restants"] = (
+                df_retours["Date_Retour_Prévu"].dt.date.apply(lambda d: (d - today).days)
+            )
             alerte = df_retours[df_retours["Jours restants"] <= 7].sort_values("Jours restants")
             if not alerte.empty:
                 if not df_mat.empty:

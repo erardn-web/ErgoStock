@@ -6,8 +6,6 @@ import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 from utils.gsheets import init_sheets, get_materiel, get_mouvements, STATUS_COLORS
 
-# ── PAS de set_page_config ici, il est dans app.py ───────────────────────────
-
 st.markdown("""
 <style>
 .qr-fixed {
@@ -50,6 +48,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Bouton fixe en bas de sidebar
 st.sidebar.markdown(
     '<div class="qr-fixed">'
     '<a href="/7_Scanner_QR" target="_self">📷 Scanner un QR Code</a>'
@@ -132,7 +131,9 @@ with left:
         cols_show = ["Statut", "Nom", "Catégorie", "Personne", "Contact", "Date_Retour_Prévu"]
         cols_show = [c for c in cols_show if c in sorti.columns]
         st.dataframe(
-            sorti[cols_show].rename(columns={"Statut": "État", "Date_Retour_Prévu": "Retour prévu"}),
+            sorti[cols_show].rename(columns={
+                "Statut": "État", "Date_Retour_Prévu": "Retour prévu"
+            }),
             use_container_width=True, hide_index=True,
         )
 
@@ -165,7 +166,9 @@ if not df_mv.empty:
     ].copy()
     if not df_retours.empty:
         try:
-            df_retours["Date_Retour_Prévu"] = pd.to_datetime(df_retours["Date_Retour_Prévu"], errors="coerce")
+            df_retours["Date_Retour_Prévu"] = pd.to_datetime(
+                df_retours["Date_Retour_Prévu"], errors="coerce"
+            )
             df_retours = df_retours.dropna(subset=["Date_Retour_Prévu"])
             df_retours["Jours restants"] = df_retours["Date_Retour_Prévu"].dt.date.apply(
                 lambda d: (d - today).days

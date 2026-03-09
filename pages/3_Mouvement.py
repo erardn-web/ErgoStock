@@ -6,7 +6,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.gsheets import (
     get_materiel, get_personnes, add_mouvement, add_personne,
-    update_materiel, TYPES_MOUVEMENT, STATUS_COLORS, ETATS
+    update_materiel, TYPES_MOUVEMENT, STATUS_COLORS, ETATS, TYPES_PERSONNE
 )
 
 st.set_page_config(page_title="Mouvement – ErgoStock", page_icon="🔄", layout="centered")
@@ -38,7 +38,7 @@ if df_mat.empty:
     st.warning("Aucun matériel enregistré. Commencez par ajouter du matériel.")
     st.stop()
 
-# ── Étape 1 : Sélection du matériel avec filtres ──────────────────────────────
+# ── Étape 1 : Sélection du matériel ──────────────────────────────────────────
 st.subheader("1️⃣ Sélectionner le matériel")
 
 with st.expander("🔍 Filtres", expanded=True):
@@ -105,7 +105,8 @@ st.subheader("2️⃣ Type de mouvement")
 
 statut_actuel = row["Statut"]
 if statut_actuel == "Disponible":
-    types_possibles = ["Prêt sortant", "Location", "Vente", "Don sortant", "Mis en réparation", "Hors service"]
+    types_possibles = ["Prêt sortant", "Location", "Vente", "Don sortant",
+                       "Mis en réparation", "Hors service"]
 elif statut_actuel in ["En prêt", "En location"]:
     types_possibles = ["Retour"]
 elif statut_actuel == "En réparation":
@@ -113,25 +114,23 @@ elif statut_actuel == "En réparation":
 else:
     types_possibles = TYPES_MOUVEMENT
 
-type_mv = st.selectbox("Type de mouvement", types_possibles)
-date_mv = st.date_input("Date du mouvement", value=date.today())
+type_mv   = st.selectbox("Type de mouvement", types_possibles)
+date_mv   = st.date_input("Date du mouvement", value=date.today())
 
 need_retour = type_mv in ["Prêt sortant", "Location"]
 date_retour = None
 if need_retour:
     date_retour = st.date_input("📅 Date de retour prévue", value=None)
 
-# ── État au retour ────────────────────────────────────────────────────────────
+# État au retour
 new_etat = None
 if type_mv in ["Retour", "Retour de réparation"]:
     st.divider()
     st.markdown("**📋 État du matériel au retour**")
     etat_actuel_idx = ETATS.index(row["État"]) if row.get("État") in ETATS else 0
     new_etat = st.selectbox(
-        "État constaté au retour",
-        ETATS,
-        index=etat_actuel_idx,
-        help="Modifiez si l'état du matériel a changé depuis le départ"
+        "État constaté au retour", ETATS, index=etat_actuel_idx,
+        help="Modifiez si l'état du matériel a changé"
     )
     if new_etat != row["État"]:
         st.warning(f"⚠️ L'état passera de **{row['État']}** → **{new_etat}**")
@@ -143,80 +142,45 @@ st.divider()
 # ── Étape 3 : Personne ────────────────────────────────────────────────────────
 need_person = type_mv not in ["Hors service", "Retour de réparation"]
 p_nom_final = ""
-p_contact = ""
+p_contact   = ""
+personne_sel = None
 
 if need_person:
     st.subheader("3️⃣ Personne concernée")
 
     personnes_liste = ["— Nouvelle personne —"]
     if not df_p.empty:
-        personnes_liste += [
-            f"{r['Prénom']} {r['Nom']} ({r['Téléphone']}) [{r['ID']}]"
-            for _, r in df_p.iterrows()
-        ]
+        for _, r in df_p.iterrows():
+            if r.get("Type") == "Professionnel":
+                label = f"{r['Nom']} (Pro) [{r['ID']}]"
+            else:
+                label = f"{r['Prénom']} {r['Nom']} ({r['Téléphone']}) [{r['ID']}]"
+            personnes_liste.append(label)
 
     personne_sel = st.selectbox("Sélectionner une personne", personnes_liste)
 
+    p_nom = p_prenom = p_tel = p_email = ""
+    p_type_new = "Patient"
+
     if personne_sel == "— Nouvelle personne —":
-        pc1, pc2 = st.columns(2)
-        with pc1:
-            p_nom    = st.text_input("Nom *")
+        p_type_new = st.selectbox("Type", TYPES_PERSONNE, key="mv_type_new")
+        if p_type_new == "Professionnel":
+            p_nom    = st.text_input("Nom de la société *")
+            p_prenom = ""
             p_tel    = st.text_input("Téléphone")
             p_email  = st.text_input("Email")
-        with pc2:
-            p_prenom = st.text_input("Prénom")
-            p_type   = st.selectbox("Type", ["Patient", "Famille", "Professionnel", "Autre"])
+        else:
+            pc1, pc2 = st.columns(2)
+            with pc1:
+                p_nom   = st.text_input("Nom *")
+                p_tel   = st.text_input("Téléphone")
+            with pc2:
+                p_prenom = st.text_input("Prénom")
+                p_email  = st.text_input("Email")
     else:
         p_id_sel = personne_sel.split("[")[-1].rstrip("]")
-        p_row = df_p[df_p["ID"] == p_id_sel] if not df_p.empty else None
-        if p_row is not None and not p_row.empty:
-            p_nom_final = f"{p_row.iloc[0].get('Prénom','')} {p_row.iloc[0].get('Nom','')}".strip()
-            p_contact   = p_row.iloc[0].get("Téléphone", "")
-
-st.divider()
-
-notes_mv = st.text_area("💬 Notes / Observations", "")
-
-if st.button("💾 Enregistrer le mouvement", type="primary", use_container_width=True):
-    errors = []
-    if need_person and personne_sel == "— Nouvelle personne —" and not p_nom.strip():
-        errors.append("Le nom de la personne est obligatoire.")
-
-    if errors:
-        for e in errors:
-            st.error(e)
-    else:
-        with st.spinner("Enregistrement…"):
-            if need_person and personne_sel == "— Nouvelle personne —" and p_nom.strip():
-                add_personne({
-                    "Nom":       p_nom.strip(),
-                    "Prénom":    p_prenom.strip(),
-                    "Téléphone": p_tel.strip(),
-                    "Email":     p_email.strip(),
-                    "Type":      p_type,
-                })
-                p_nom_final = f"{p_prenom} {p_nom}".strip()
-                p_contact   = p_tel.strip()
-
-            add_mouvement({
-                "ID_Matériel":          mat_id,
-                "Nom_Matériel":         row["Nom"],
-                "Date":                 str(date_mv),
-                "Type_Mouvement":       type_mv,
-                "Personne":             p_nom_final if need_person else "",
-                "Contact":              p_contact   if need_person else "",
-                "Date_Retour_Prévu":    str(date_retour) if date_retour else "",
-                "Date_Retour_Effectif": str(date_mv) if type_mv == "Retour" else "",
-                "Notes":                notes_mv,
-            })
-
-            # Mise à jour de l'état si retour
-            if new_etat and new_etat != row["État"]:
-                update_materiel(mat_id, {"État": new_etat})
-
-        st.success(
-            f"✅ Mouvement **{type_mv}** enregistré pour **{row['Nom']}**"
-            + (f" — {p_nom_final}" if need_person and p_nom_final else "")
-            + (f" — État mis à jour : **{new_etat}**" if new_etat and new_etat != row["État"] else "")
-        )
-        st.cache_data.clear()
+        if not df_p.empty:
+            p_row = df_p[df_p["ID"] == p_id_sel]
+            if not p_row.empty:
+                pr = p_row.iloc[0]
+                if pr.get("Type") == "Professionnel":

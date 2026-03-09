@@ -23,7 +23,7 @@ HEADERS_MATERIEL = [
 HEADERS_MOUVEMENTS = [
     "ID_Mouvement", "ID_Matériel", "Nom_Matériel", "Date",
     "Type_Mouvement", "Personne", "Contact",
-    "Date_Retour_Prévu", "Date_Retour_Effectif", "Notes"
+    "Date_Retour_Prévu", "Date_Retour_Effectif", "Notes", "Horodatage"
 ]
 
 HEADERS_PERSONNES = [
@@ -140,7 +140,8 @@ def get_materiel() -> pd.DataFrame:
 def get_mouvements() -> pd.DataFrame:
     spreadsheet = get_spreadsheet()
     ws = get_or_create_sheet(spreadsheet, SHEET_MOUVEMENTS, HEADERS_MOUVEMENTS)
-    return _safe_df(ws, HEADERS_MOUVEMENTS)
+    df = _safe_df(ws, HEADERS_MOUVEMENTS)
+    return df
 
 
 def get_personnes() -> pd.DataFrame:
@@ -153,7 +154,16 @@ def get_historique_materiel(mat_id: str) -> pd.DataFrame:
     df = get_mouvements()
     if df.empty:
         return df
-    return df[df["ID_Matériel"] == mat_id].sort_values("Date", ascending=False)
+    filtered = df[df["ID_Matériel"] == mat_id].copy()
+    # Trier par horodatage si disponible, sinon par date
+    if "Horodatage" in filtered.columns and filtered["Horodatage"].astype(bool).any():
+        try:
+            filtered["_sort"] = pd.to_datetime(filtered["Horodatage"], errors="coerce")
+            filtered = filtered.sort_values("_sort", ascending=False).drop(columns=["_sort"])
+            return filtered
+        except Exception:
+            pass
+    return filtered.sort_values("Date", ascending=False)
 
 
 # ── Écriture ──────────────────────────────────────────────────────────────────
@@ -220,6 +230,7 @@ def add_mouvement(data: dict):
         data.get("Date_Retour_Prévu", ""),
         data.get("Date_Retour_Effectif", ""),
         data.get("Notes", ""),
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     ]
     ws.append_row(row)
     update_statut_materiel(data["ID_Matériel"], data["Type_Mouvement"])
@@ -263,7 +274,6 @@ def update_personne(p_id: str, data: dict) -> bool:
 # ── Upload photo ImgBB ────────────────────────────────────────────────────────
 
 def upload_photo_to_drive(image_bytes: bytes, filename: str) -> str:
-    """Upload une photo sur ImgBB et retourne l'URL publique."""
     try:
         import base64
         import requests

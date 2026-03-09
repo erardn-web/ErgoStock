@@ -1,11 +1,12 @@
 import streamlit as st
 from datetime import date
+import pandas as pd
 import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.gsheets import (
     get_materiel, get_personnes, add_mouvement, add_personne,
-    TYPES_MOUVEMENT, STATUS_COLORS
+    update_materiel, TYPES_MOUVEMENT, STATUS_COLORS, ETATS
 )
 
 st.set_page_config(page_title="Mouvement – ErgoStock", page_icon="🔄", layout="centered")
@@ -31,7 +32,7 @@ with st.spinner("Chargement des personnes..."):
     try:
         df_p = load_pers()
     except Exception as e:
-        df_p = __import__('pandas').DataFrame()
+        df_p = pd.DataFrame()
 
 if df_mat.empty:
     st.warning("Aucun matériel enregistré. Commencez par ajouter du matériel.")
@@ -39,8 +40,6 @@ if df_mat.empty:
 
 # ── Étape 1 : Sélection du matériel avec filtres ──────────────────────────────
 st.subheader("1️⃣ Sélectionner le matériel")
-
-import pandas as pd
 
 with st.expander("🔍 Filtres", expanded=True):
     fc1, fc2, fc3 = st.columns(3)
@@ -67,7 +66,6 @@ if filtre_cat != "Toutes":
 
 st.caption(f"**{len(filtered)}** article(s)")
 
-# Tableau cliquable
 display_df = filtered[["ID", "Nom", "Catégorie", "État", "Statut"]].copy()
 display_df["Statut"] = display_df["Statut"].apply(
     lambda s: f"{STATUS_COLORS.get(s, '⚪')} {s}"
@@ -81,7 +79,6 @@ selected = st.dataframe(
     selection_mode="single-row",
 )
 
-# Vérifier si une ligne est sélectionnée
 if not selected or not selected["selection"]["rows"]:
     st.info("👆 Cliquez sur un article dans le tableau pour continuer.")
     st.stop()
@@ -92,11 +89,10 @@ row = df_mat[df_mat["ID"] == mat_id].iloc[0]
 
 st.divider()
 
-# Infos article sélectionné
 c1, c2, c3 = st.columns(3)
 c1.metric("Nom", row["Nom"])
 c2.metric("Statut", f"{STATUS_COLORS.get(row['Statut'], '⚪')} {row['Statut']}")
-c3.metric("Catégorie", row["Catégorie"])
+c3.metric("État actuel", row["État"])
 
 if row.get("Photo_URL", ""):
     with st.expander("📷 Photo"):
@@ -124,6 +120,23 @@ need_retour = type_mv in ["Prêt sortant", "Location"]
 date_retour = None
 if need_retour:
     date_retour = st.date_input("📅 Date de retour prévue", value=None)
+
+# ── État au retour ────────────────────────────────────────────────────────────
+new_etat = None
+if type_mv in ["Retour", "Retour de réparation"]:
+    st.divider()
+    st.markdown("**📋 État du matériel au retour**")
+    etat_actuel_idx = ETATS.index(row["État"]) if row.get("État") in ETATS else 0
+    new_etat = st.selectbox(
+        "État constaté au retour",
+        ETATS,
+        index=etat_actuel_idx,
+        help="Modifiez si l'état du matériel a changé depuis le départ"
+    )
+    if new_etat != row["État"]:
+        st.warning(f"⚠️ L'état passera de **{row['État']}** → **{new_etat}**")
+    else:
+        st.success(f"✅ État inchangé : **{new_etat}**")
 
 st.divider()
 
@@ -197,8 +210,13 @@ if st.button("💾 Enregistrer le mouvement", type="primary", use_container_widt
                 "Notes":                notes_mv,
             })
 
+            # Mise à jour de l'état si retour
+            if new_etat and new_etat != row["État"]:
+                update_materiel(mat_id, {"État": new_etat})
+
         st.success(
             f"✅ Mouvement **{type_mv}** enregistré pour **{row['Nom']}**"
             + (f" — {p_nom_final}" if need_person and p_nom_final else "")
+            + (f" — État mis à jour : **{new_etat}**" if new_etat and new_etat != row["État"] else "")
         )
         st.cache_data.clear()

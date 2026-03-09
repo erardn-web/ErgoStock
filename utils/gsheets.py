@@ -260,38 +260,37 @@ def update_personne(p_id: str, data: dict) -> bool:
         return False
 
 
-# ── Upload photo Google Drive ─────────────────────────────────────────────────
+# ── Upload photo ImgBB ────────────────────────────────────────────────────────
 
 def upload_photo_to_drive(image_bytes: bytes, filename: str) -> str:
-    """Upload une photo dans le dossier Drive partagé et retourne l'URL publique."""
+    """Upload une photo sur ImgBB et retourne l'URL publique."""
     try:
-        from googleapiclient.discovery import build
-        from googleapiclient.http import MediaIoBaseUpload
-        import io
+        import base64
+        import requests
 
-        folder_id = "1BM5O5O0VsSn7_LSgFzUdS7BFPfAI8OeC"
+        api_key = st.secrets.get("imgbb_api_key", "")
+        if not api_key:
+            st.error("imgbb_api_key manquant dans les secrets Streamlit.")
+            return ""
 
-        creds_dict = dict(st.secrets["gcp_service_account"])
-        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-        drive_service = build("drive", "v3", credentials=creds)
+        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
-        # Upload dans le dossier partagé
-        file_metadata = {"name": filename, "parents": [folder_id]}
-        media = MediaIoBaseUpload(io.BytesIO(image_bytes), mimetype="image/jpeg")
-        file = drive_service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields="id"
-        ).execute()
-        file_id = file["id"]
+        response = requests.post(
+            "https://api.imgbb.com/1/upload",
+            data={
+                "key": api_key,
+                "image": image_b64,
+                "name": filename,
+            },
+            timeout=30,
+        )
 
-        # Rendre le fichier public
-        drive_service.permissions().create(
-            fileId=file_id,
-            body={"type": "anyone", "role": "reader"}
-        ).execute()
-
-        return f"https://drive.google.com/uc?id={file_id}"
+        result = response.json()
+        if result.get("success"):
+            return result["data"]["url"]
+        else:
+            st.error(f"Erreur ImgBB : {result.get('error', {}).get('message', 'Inconnue')}")
+            return ""
 
     except Exception as e:
         st.error(f"Erreur upload photo : {e}")

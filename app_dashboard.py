@@ -57,7 +57,7 @@ st.markdown("""
 # Bouton fixe en bas de sidebar — mobile uniquement
 st.sidebar.markdown(
     '<div class="qr-fixed">'
-    '<a href="/7_Scanner_QR" target="_self">📷 Scanner un QR Code</a>'
+    '<a href="/scanner-qr" target="_self">📷 Scanner un QR Code</a>'
     '</div>',
     unsafe_allow_html=True
 )
@@ -111,7 +111,7 @@ st.markdown("""
             <p>Identifiez un article et enregistrez un mouvement rapidement</p>
         </div>
     </div>
-    <a href="/7_Scanner_QR" target="_self"
+    <a href="/scanner-qr" target="_self"
        style="display:block; background:#FF4B4B; color:white; text-align:center;
               padding:12px; border-radius:8px; text-decoration:none;
               font-weight:bold; font-size:1rem; margin-top:8px;

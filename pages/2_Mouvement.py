@@ -13,7 +13,6 @@ st.set_page_config(page_title="Mouvement – ErgoStock", page_icon="🔄", layou
 st.title("🔄 Enregistrer un mouvement")
 st.divider()
 
-# Tous les mouvements possibles selon le statut
 TRANSITIONS = {
     "Disponible":    ["Prêt sortant", "Location", "Vente", "Don sortant",
                       "Mis en réparation", "Hors service"],
@@ -21,7 +20,8 @@ TRANSITIONS = {
                       "Location", "Hors service"],
     "En location":   ["Retour", "Vente", "Don sortant", "Mis en réparation",
                       "Prêt sortant", "Hors service"],
-    "En réparation": ["Retour de réparation", "Hors service", "Don sortant", "Vente"],
+    "En réparation": ["Retour de réparation", "Prêt sortant", "Location",
+                      "Vente", "Don sortant", "Hors service"],
     "Vendu":         TYPES_MOUVEMENT,
     "Donné":         TYPES_MOUVEMENT,
     "Hors service":  TYPES_MOUVEMENT,
@@ -47,10 +47,13 @@ if df_mat.empty:
     st.warning("Aucun matériel enregistré.")
     st.stop()
 
+# Pré-sélection via lien depuis fiche matériel
+preselect_mat_id = st.query_params.get("mat_id", "")
+
 # ── Étape 1 : Sélection du matériel ──────────────────────────────────────────
 st.subheader("1️⃣ Sélectionner le matériel")
 
-with st.expander("🔍 Filtres", expanded=True):
+with st.expander("🔍 Filtres", expanded=not bool(preselect_mat_id)):
     fc1, fc2, fc3 = st.columns(3)
     with fc1:
         search = st.text_input("Recherche (nom, ID…)", "")
@@ -83,13 +86,22 @@ selected = st.dataframe(
     on_select="rerun", selection_mode="single-row",
 )
 
-if not selected or not selected["selection"]["rows"]:
+# Résoudre le mat_id : depuis query param ou depuis le tableau
+mat_id = None
+if preselect_mat_id and preselect_mat_id in df_mat["ID"].values and not (
+    selected and selected["selection"]["rows"]
+):
+    mat_id = preselect_mat_id
+elif selected and selected["selection"]["rows"]:
+    idx    = selected["selection"]["rows"][0]
+    mat_id = filtered.iloc[idx]["ID"]
+    st.query_params.clear()
+
+if not mat_id:
     st.info("👆 Cliquez sur un article dans le tableau pour continuer.")
     st.stop()
 
-idx    = selected["selection"]["rows"][0]
-mat_id = filtered.iloc[idx]["ID"]
-row    = df_mat[df_mat["ID"] == mat_id].iloc[0]
+row = df_mat[df_mat["ID"] == mat_id].iloc[0]
 
 st.divider()
 
@@ -107,7 +119,7 @@ st.divider()
 # ── Étape 2 : Type de mouvement ───────────────────────────────────────────────
 st.subheader("2️⃣ Type de mouvement")
 
-statut_actuel  = row["Statut"]
+statut_actuel   = row["Statut"]
 types_possibles = TRANSITIONS.get(statut_actuel, TYPES_MOUVEMENT)
 
 type_mv = st.selectbox("Type de mouvement", types_possibles)
@@ -136,20 +148,20 @@ if type_mv in ["Retour", "Retour de réparation"]:
 st.divider()
 
 # ── Étape 3 : Personne ────────────────────────────────────────────────────────
-need_person = type_mv not in ["Hors service", "Retour de réparation"]
-p_nom_final = ""
-p_contact   = ""
+need_person  = type_mv not in ["Hors service", "Retour de réparation"]
+p_nom_final  = ""
+p_contact    = ""
 personne_sel = None
+is_retour    = type_mv == "Retour"
 
 if need_person:
     st.subheader("3️⃣ Personne concernée")
 
-    # Pour un retour : chercher la personne du dernier mouvement sortant
-    is_retour = type_mv == "Retour"
+    # Chercher la personne du dernier mouvement sortant
     personne_retour_nom     = ""
     personne_retour_contact = ""
 
-    if is_retour and not df_mv.empty:
+    if not df_mv.empty:
         derniers_sortants = df_mv[
             (df_mv["ID_Matériel"] == mat_id) &
             (df_mv["Type_Mouvement"].isin(["Prêt sortant", "Location"]))
@@ -160,7 +172,7 @@ if need_person:
             personne_retour_contact = dernier.get("Contact", "")
 
     if is_retour and personne_retour_nom:
-        # Retour : personne pré-remplie, affichée en lecture seule
+        # Retour : personne en lecture seule
         st.info(
             f"👤 **{personne_retour_nom}**"
             + (f" · 📞 {personne_retour_contact}" if personne_retour_contact else "")
@@ -169,7 +181,7 @@ if need_person:
         p_contact   = personne_retour_contact
 
     else:
-        # Vente directe / don depuis un prêt / autre : sélection libre
+        # Autres cas : sélection avec pré-sélection si connu
         personnes_liste = ["— Nouvelle personne —"]
         if not df_p.empty:
             for _, r in df_p.iterrows():
@@ -179,19 +191,13 @@ if need_person:
                     label = f"{r['Prénom']} {r['Nom']} ({r['Téléphone']}) [{r['ID']}]"
                 personnes_liste.append(label)
 
-        # Si l'objet était chez quelqu'un, pré-sélectionner cette personne par défaut
+        # Pré-sélectionner la personne chez qui était l'objet si applicable
         default_idx = 0
-        if statut_actuel in ["En prêt", "En location"] and not df_mv.empty:
-            derniers_sortants = df_mv[
-                (df_mv["ID_Matériel"] == mat_id) &
-                (df_mv["Type_Mouvement"].isin(["Prêt sortant", "Location"]))
-            ].sort_values("Date", ascending=False)
-            if not derniers_sortants.empty:
-                nom_chez = derniers_sortants.iloc[0].get("Personne", "")
-                for i, label in enumerate(personnes_liste):
-                    if nom_chez and nom_chez in label:
-                        default_idx = i
-                        break
+        if statut_actuel in ["En prêt", "En location"] and personne_retour_nom:
+            for i, label in enumerate(personnes_liste):
+                if personne_retour_nom in label:
+                    default_idx = i
+                    break
 
         personne_sel = st.selectbox(
             "Sélectionner une personne", personnes_liste, index=default_idx
@@ -270,4 +276,5 @@ if st.button("💾 Enregistrer le mouvement", type="primary", use_container_widt
             + (f" — {p_nom_final}" if need_person and p_nom_final else "")
             + (f" — État mis à jour : **{new_etat}**" if new_etat and new_etat != row["État"] else "")
         )
+        st.query_params.clear()
         st.cache_data.clear()

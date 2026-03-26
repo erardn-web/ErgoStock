@@ -6,7 +6,8 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.gsheets import (
     get_materiel, get_historique_materiel, update_materiel,
-    STATUS_COLORS, CATEGORIES, ETATS, upload_photo_to_drive
+    STATUS_COLORS, CATEGORIES, ETATS, upload_photo_to_drive,
+    encode_disponibilites, decode_disponibilites
 )
 from utils.qrcode_utils import generate_qr
 
@@ -78,6 +79,7 @@ if not mat_id:
 row = df_mat[df_mat["ID"] == mat_id].iloc[0]
 st.divider()
 
+# ── Fiche ──────────────────────────────────────────────────────────────────────
 col_photo, col_info, col_qr = st.columns([2, 3, 2])
 
 with col_photo:
@@ -109,9 +111,18 @@ with col_info:
         if v:
             st.markdown(f"**{k} :** {v}")
 
+    # Affichage disponibilités
+    dispos = decode_disponibilites(row.get("Disponibilités", ""))
+    tags = []
+    if dispos["tester"]: tags.append("🔬 À tester")
+    if dispos["preter"]: tags.append("🤝 À prêter")
+    if dispos["vendre"]: tags.append("💶 À vendre")
+    if tags:
+        st.markdown("**Disponibilités :** " + "  ".join([f"**{t}**" for t in tags]))
+
 with col_qr:
     st.subheader("🔲 QR Code")
-    qr_bytes = generate_qr(f"ERGO-STOCK:{mat_id}", size=250)
+    qr_bytes = generate_qr(f"ERGO-STOCK:{mat_id}")
     st.image(qr_bytes, width=200)
     st.download_button(
         "⬇️ Télécharger le QR Code",
@@ -119,7 +130,7 @@ with col_qr:
         file_name=f"qr_{mat_id}.png",
         mime="image/png",
     )
-    st.caption("Collez cette étiquette sur le matériel.")
+    st.caption("Format 23×23mm — compatible Brother DK-11221")
 
 # ── Bouton mouvement ───────────────────────────────────────────────────────────
 st.divider()
@@ -151,7 +162,20 @@ else:
 
 st.divider()
 
+# ── Édition ────────────────────────────────────────────────────────────────────
 with st.expander("✏️ Modifier les informations"):
+
+    # Disponibilités HORS formulaire
+    dispos_act = decode_disponibilites(row.get("Disponibilités", ""))
+    st.markdown("**🏷️ Disponibilités**")
+    dc1, dc2, dc3 = st.columns(3)
+    with dc1:
+        dispo_tester = st.checkbox("🔬 À tester", value=dispos_act["tester"], key=f"tester_{mat_id}")
+    with dc2:
+        dispo_preter = st.checkbox("🤝 À prêter", value=dispos_act["preter"], key=f"preter_{mat_id}")
+    with dc3:
+        dispo_vendre = st.checkbox("💶 À vendre", value=dispos_act["vendre"], key=f"vendre_{mat_id}")
+
     with st.form("form_edit"):
         e1, e2 = st.columns(2)
         with e1:
@@ -192,9 +216,18 @@ with st.expander("✏️ Modifier les informations"):
     if save_btn:
         with st.spinner("Mise à jour…"):
             ok = update_materiel(mat_id, {
-                "Nom": new_nom, "Catégorie": new_cat, "État": new_etat,
-                "Photo_URL": new_photo, "Valeur_EUR": new_val,
-                "Description": new_desc, "Notes": new_notes,
+                "Nom":            new_nom,
+                "Catégorie":      new_cat,
+                "État":           new_etat,
+                "Photo_URL":      new_photo,
+                "Valeur_EUR":     new_val,
+                "Description":    new_desc,
+                "Notes":          new_notes,
+                "Disponibilités": encode_disponibilites(
+                    st.session_state.get(f"tester_{mat_id}", False),
+                    st.session_state.get(f"preter_{mat_id}", False),
+                    st.session_state.get(f"vendre_{mat_id}", False),
+                ),
             })
         if ok:
             st.success("✅ Matériel mis à jour.")

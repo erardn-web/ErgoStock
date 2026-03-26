@@ -6,7 +6,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.gsheets import (
     add_materiel, CATEGORIES, ETATS,
     add_mouvement, get_personnes, add_personne,
-    upload_photo_to_drive, TYPES_PERSONNE
+    upload_photo_to_drive, TYPES_PERSONNE,
+    encode_disponibilites
 )
 from utils.qrcode_utils import generate_qr
 
@@ -34,6 +35,19 @@ with c2:
 
 description = st.text_area("Description", placeholder="Marque, référence, caractéristiques…")
 notes       = st.text_area("Notes internes", placeholder="Observations…")
+
+# ── Disponibilités ────────────────────────────────────────────────────────────
+st.divider()
+st.subheader("🏷️ Disponibilités")
+dc1, dc2, dc3, dc4 = st.columns(4)
+with dc1:
+    dispo_tester = st.checkbox("🔬 À tester")
+with dc2:
+    dispo_preter = st.checkbox("🤝 À prêter")
+with dc3:
+    dispo_donner = st.checkbox("❤️ À donner")
+with dc4:
+    dispo_vendre = st.checkbox("💶 À vendre")
 
 # ── Provenance ────────────────────────────────────────────────────────────────
 st.divider()
@@ -107,6 +121,9 @@ if st.button("💾 Enregistrer le matériel", type="primary", use_container_widt
                 "Mode_Acquisition": mode,
                 "Valeur_EUR":       valeur if valeur > 0 else "",
                 "Notes":            notes,
+                "Disponibilités":   encode_disponibilites(
+                    dispo_tester, dispo_preter, dispo_donner, dispo_vendre
+                ),
             })
 
             personne_nom_final = ""

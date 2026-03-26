@@ -5,8 +5,10 @@ import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.gsheets import (
-    get_materiel, get_historique_materiel, update_materiel,
-    STATUS_COLORS, CATEGORIES, ETATS, upload_photo_to_drive
+    get_materiel, get_mouvements, get_personnes, get_historique_materiel,
+    update_materiel, add_personne,
+    STATUS_COLORS, CATEGORIES, ETATS, upload_photo_to_drive,
+    encode_disponibilites, decode_disponibilites, TYPES_PERSONNE
 )
 from utils.qrcode_utils import generate_qr
 
@@ -17,6 +19,14 @@ st.divider()
 @st.cache_data(ttl=30)
 def load():
     return get_materiel()
+
+@st.cache_data(ttl=30)
+def load_mv():
+    return get_mouvements()
+
+@st.cache_data(ttl=60)
+def load_personnes():
+    return get_personnes()
 
 df_mat = load()
 
@@ -75,9 +85,11 @@ if not mat_id:
     st.info("👆 Cliquez sur un article pour voir sa fiche.")
     st.stop()
 
-row = df_mat[df_mat["ID"] == mat_id].iloc[0]
+row   = df_mat[df_mat["ID"] == mat_id].iloc[0]
+df_mv = load_mv()
 st.divider()
 
+# ── Fiche ──────────────────────────────────────────────────────────────────────
 col_photo, col_info, col_qr = st.columns([2, 3, 2])
 
 with col_photo:
@@ -109,9 +121,39 @@ with col_info:
         if v:
             st.markdown(f"**{k} :** {v}")
 
+    # Chez qui est l'objet
+    statut_actuel = row.get("Statut", "")
+    if statut_actuel in ["En prêt", "En location", "Donné"] and not df_mv.empty:
+        derniers = df_mv[
+            (df_mv["ID_Matériel"] == mat_id) &
+            (df_mv["Type_Mouvement"].isin(["Prêt sortant", "Location", "Don sortant"]))
+        ].sort_values("Date", ascending=False)
+        if not derniers.empty:
+            dernier  = derniers.iloc[0]
+            personne = dernier.get("Personne", "")
+            contact  = dernier.get("Contact", "")
+            retour   = dernier.get("Date_Retour_Prévu", "")
+            if personne:
+                ligne = f"📍 Actuellement chez : **{personne}**"
+                if contact:
+                    ligne += f" · 📞 {contact}"
+                st.markdown(ligne)
+            if retour:
+                st.markdown(f"📅 Retour prévu : **{retour}**")
+
+    # Disponibilités
+    dispos = decode_disponibilites(row.get("Disponibilités", ""))
+    tags = []
+    if dispos["tester"]: tags.append("🔬 À tester")
+    if dispos["preter"]: tags.append("🤝 À prêter")
+    if dispos["donner"]: tags.append("❤️ À donner")
+    if dispos["vendre"]: tags.append("💶 À vendre")
+    if tags:
+        st.markdown("**Disponibilités :** " + "  ".join([f"**{t}**" for t in tags]))
+
 with col_qr:
     st.subheader("🔲 QR Code")
-    qr_bytes = generate_qr(f"ERGO-STOCK:{mat_id}", size=250)
+    qr_bytes = generate_qr(f"ERGO-STOCK:{mat_id}")
     st.image(qr_bytes, width=200)
     st.download_button(
         "⬇️ Télécharger le QR Code",
@@ -119,7 +161,7 @@ with col_qr:
         file_name=f"qr_{mat_id}.png",
         mime="image/png",
     )
-    st.caption("Collez cette étiquette sur le matériel.")
+    st.caption("Format 23×23mm — compatible Brother DK-11221")
 
 # ── Bouton mouvement ───────────────────────────────────────────────────────────
 st.divider()
@@ -151,27 +193,94 @@ else:
 
 st.divider()
 
+# ── Édition ────────────────────────────────────────────────────────────────────
 with st.expander("✏️ Modifier les informations"):
-    with st.form("form_edit"):
-        e1, e2 = st.columns(2)
-        with e1:
-            new_nom  = st.text_input("Nom", value=row.get("Nom", ""))
-            new_cat  = st.selectbox("Catégorie", CATEGORIES,
-                                    index=CATEGORIES.index(row["Catégorie"])
-                                    if row.get("Catégorie") in CATEGORIES else 0)
-            new_etat = st.selectbox("État", ETATS,
-                                    index=ETATS.index(row["État"])
-                                    if row.get("État") in ETATS else 0)
-        with e2:
-            new_val = st.text_input("Valeur (€)", value=str(row.get("Valeur_EUR", "")))
 
-        new_desc  = st.text_area("Description", value=row.get("Description", ""))
-        new_notes = st.text_area("Notes",       value=row.get("Notes", ""))
-        save_btn  = st.form_submit_button("💾 Enregistrer les modifications", type="primary")
+    # Infos générales
+    st.subheader("📋 Informations générales")
+    e1, e2 = st.columns(2)
+    with e1:
+        new_nom  = st.text_input("Nom", value=row.get("Nom", ""), key="edit_nom")
+        new_cat  = st.selectbox("Catégorie", CATEGORIES,
+                                index=CATEGORIES.index(row["Catégorie"])
+                                if row.get("Catégorie") in CATEGORIES else 0,
+                                key="edit_cat")
+        new_etat = st.selectbox("État", ETATS,
+                                index=ETATS.index(row["État"])
+                                if row.get("État") in ETATS else 0,
+                                key="edit_etat")
+    with e2:
+        new_val  = st.text_input("Valeur (€)", value=str(row.get("Valeur_EUR", "")), key="edit_val")
 
-    st.markdown("**📷 Modifier la photo**")
+    new_desc  = st.text_area("Description", value=row.get("Description", ""), key="edit_desc")
+    new_notes = st.text_area("Notes",       value=row.get("Notes", ""),        key="edit_notes")
+
+    # Disponibilités
+    st.divider()
+    st.subheader("🏷️ Disponibilités")
+    dispos_act = decode_disponibilites(row.get("Disponibilités", ""))
+    dc1, dc2, dc3, dc4 = st.columns(4)
+    with dc1:
+        dispo_tester = st.checkbox("🔬 À tester", value=dispos_act["tester"], key=f"tester_{mat_id}")
+    with dc2:
+        dispo_preter = st.checkbox("🤝 À prêter", value=dispos_act["preter"], key=f"preter_{mat_id}")
+    with dc3:
+        dispo_donner = st.checkbox("❤️ À donner", value=dispos_act["donner"], key=f"donner_{mat_id}")
+    with dc4:
+        dispo_vendre = st.checkbox("💶 À vendre", value=dispos_act["vendre"], key=f"vendre_{mat_id}")
+
+    # Provenance
+    st.divider()
+    st.subheader("👤 Provenance")
+    df_p = load_personnes()
+
+    # Trouver la provenance actuelle depuis l'historique
+    provenance_actuelle = ""
+    if not df_mv.empty:
+        entrants = df_mv[
+            (df_mv["ID_Matériel"] == mat_id) &
+            (df_mv["Type_Mouvement"].isin(["Don reçu", "Prêt entrant", "Achat"]))
+        ].sort_values("Date", ascending=False)
+        if not entrants.empty:
+            provenance_actuelle = entrants.iloc[0].get("Personne", "")
+
+    if provenance_actuelle:
+        st.info(f"📍 Provenance enregistrée : **{provenance_actuelle}**")
+
+    personnes_liste = ["— Aucune / Non renseignée —", "— Nouvelle personne —"]
+    if not df_p.empty:
+        for _, r in df_p.iterrows():
+            if r.get("Type") == "Professionnel":
+                label = f"{r['Nom']} (Pro) [{r['ID']}]"
+            else:
+                label = f"{r['Prénom']} {r['Nom']} ({r['Téléphone']}) [{r['ID']}]"
+            personnes_liste.append(label)
+
+    prov_sel = st.selectbox("Modifier la provenance", personnes_liste, key="edit_prov_sel")
+
+    new_p_nom = new_p_prenom = new_p_tel = new_p_email = ""
+    new_p_type = "Patient"
+
+    if prov_sel == "— Nouvelle personne —":
+        new_p_type = st.selectbox("Type *", TYPES_PERSONNE, key="edit_prov_type")
+        if new_p_type == "Professionnel":
+            new_p_nom   = st.text_input("Nom de la société *", key="edit_prov_nom")
+            new_p_tel   = st.text_input("Téléphone", key="edit_prov_tel")
+            new_p_email = st.text_input("Email", key="edit_prov_email")
+        else:
+            pp1, pp2 = st.columns(2)
+            with pp1:
+                new_p_nom    = st.text_input("Nom *",    key="edit_prov_nom")
+                new_p_tel    = st.text_input("Téléphone", key="edit_prov_tel")
+            with pp2:
+                new_p_prenom = st.text_input("Prénom",   key="edit_prov_prenom")
+                new_p_email  = st.text_input("Email",    key="edit_prov_email")
+
+    # Photo
+    st.divider()
+    st.subheader("📷 Photo")
     photo_source = st.radio(
-        "Source", ["📸 Prendre une photo", "🔗 URL existante"],
+        "Source", ["⏭️ Garder l'actuelle", "📸 Prendre une photo", "🔗 URL existante"],
         horizontal=True, key="photo_src_edit"
     )
     new_photo = row.get("Photo_URL", "")
@@ -186,16 +295,36 @@ with st.expander("✏️ Modifier les informations"):
             if new_photo:
                 st.success("✅ Photo uploadée !")
                 st.image(img, width=200)
-    else:
-        new_photo = st.text_input("URL Photo", value=row.get("Photo_URL", ""))
+    elif photo_source == "🔗 URL existante":
+        new_photo = st.text_input("URL Photo", value=row.get("Photo_URL", ""), key="edit_photo_url")
 
-    if save_btn:
+    # Bouton enregistrer en bas
+    st.divider()
+    if st.button("💾 Enregistrer les modifications", type="primary", use_container_width=True, key="btn_save"):
         with st.spinner("Mise à jour…"):
             ok = update_materiel(mat_id, {
-                "Nom": new_nom, "Catégorie": new_cat, "État": new_etat,
-                "Photo_URL": new_photo, "Valeur_EUR": new_val,
-                "Description": new_desc, "Notes": new_notes,
+                "Nom":            new_nom,
+                "Catégorie":      new_cat,
+                "État":           new_etat,
+                "Photo_URL":      new_photo,
+                "Valeur_EUR":     new_val,
+                "Description":    new_desc,
+                "Notes":          new_notes,
+                "Disponibilités": encode_disponibilites(
+                    dispo_tester, dispo_preter, dispo_donner, dispo_vendre
+                ),
             })
+
+            # Mise à jour provenance si nouvelle personne saisie
+            if prov_sel == "— Nouvelle personne —" and new_p_nom.strip():
+                add_personne({
+                    "Nom":       new_p_nom.strip(),
+                    "Prénom":    new_p_prenom.strip(),
+                    "Téléphone": new_p_tel.strip(),
+                    "Email":     new_p_email.strip(),
+                    "Type":      new_p_type,
+                })
+
         if ok:
             st.success("✅ Matériel mis à jour.")
             st.cache_data.clear()

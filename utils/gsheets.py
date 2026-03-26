@@ -18,7 +18,7 @@ SHEET_PERSONNES  = "Personnes"
 HEADERS_MATERIEL = [
     "ID", "Nom", "Catégorie", "Description", "État",
     "Photo_URL", "Statut", "Date_Acquisition",
-    "Mode_Acquisition", "Valeur_EUR", "Notes"
+    "Mode_Acquisition", "Valeur_EUR", "Notes", "Disponibilités"
 ]
 
 HEADERS_MOUVEMENTS = [
@@ -42,17 +42,9 @@ STATUS_COLORS = {
 }
 
 TYPES_MOUVEMENT = [
-    "Achat",
-    "Don reçu",
-    "Prêt entrant",
-    "Prêt sortant",
-    "Location",
-    "Vente",
-    "Don sortant",
-    "Retour",
-    "Mis en réparation",
-    "Retour de réparation",
-    "Hors service",
+    "Achat", "Don reçu", "Prêt entrant", "Prêt sortant",
+    "Location", "Vente", "Don sortant", "Retour",
+    "Mis en réparation", "Retour de réparation", "Hors service",
 ]
 
 STATUS_AFTER_MOUVEMENT = {
@@ -70,16 +62,9 @@ STATUS_AFTER_MOUVEMENT = {
 }
 
 CATEGORIES = [
-    "Aide à la mobilité",
-    "Aide à la communication",
-    "Aide à la préhension",
-    "Aide à la vie quotidienne",
-    "Orthèse / Attelle",
-    "Siège / Positionnement",
-    "Jeu / Loisir",
-    "Évaluation / Bilan",
-    "Formation / Documentation",
-    "Autre",
+    "Aide à la mobilité", "Aide à la communication", "Aide à la préhension",
+    "Aide à la vie quotidienne", "Orthèse / Attelle", "Siège / Positionnement",
+    "Jeu / Loisir", "Évaluation / Bilan", "Formation / Documentation", "Autre",
 ]
 
 ETATS = ["Neuf", "Très bon", "Bon", "Correct", "Usagé", "À réparer"]
@@ -136,7 +121,6 @@ def _safe_df(ws, headers):
     try:
         data = ws.get_all_records(expected_headers=headers)
     except Exception:
-        # Headers ne correspondent pas exactement : lecture sans vérification
         try:
             data = ws.get_all_records()
         except Exception:
@@ -144,7 +128,6 @@ def _safe_df(ws, headers):
     if not data:
         return pd.DataFrame(columns=headers)
     df = pd.DataFrame(data)
-    # Ajouter les colonnes manquantes avec valeur vide
     for col in headers:
         if col not in df.columns:
             df[col] = ""
@@ -174,7 +157,6 @@ def get_historique_materiel(mat_id: str) -> pd.DataFrame:
     if df.empty:
         return df
     filtered = df[df["ID_Matériel"] == mat_id].copy()
-    # Trier par horodatage si disponible, sinon par date
     if "Horodatage" in filtered.columns and filtered["Horodatage"].astype(bool).any():
         try:
             filtered["_sort"] = pd.to_datetime(filtered["Horodatage"], errors="coerce")
@@ -183,6 +165,25 @@ def get_historique_materiel(mat_id: str) -> pd.DataFrame:
         except Exception:
             pass
     return filtered.sort_values("Date", ascending=False)
+
+
+# ── Helpers disponibilités ────────────────────────────────────────────────────
+
+def encode_disponibilites(tester: bool, preter: bool, vendre: bool) -> str:
+    parts = []
+    if tester: parts.append("À tester")
+    if preter: parts.append("À prêter")
+    if vendre: parts.append("À vendre")
+    return ", ".join(parts)
+
+
+def decode_disponibilites(value: str):
+    v = value or ""
+    return {
+        "tester": "À tester" in v,
+        "preter": "À prêter" in v,
+        "vendre": "À vendre" in v,
+    }
 
 
 # ── Écriture ──────────────────────────────────────────────────────────────────
@@ -207,6 +208,7 @@ def add_materiel(data: dict) -> str:
         data.get("Mode_Acquisition", ""),
         data.get("Valeur_EUR", ""),
         data.get("Notes", ""),
+        data.get("Disponibilités", ""),
     ]
     ws.append_row(row)
     return mat_id
@@ -294,29 +296,20 @@ def update_personne(p_id: str, data: dict) -> bool:
 
 def upload_photo_to_drive(image_bytes: bytes, filename: str) -> str:
     try:
-        import base64
-        import requests
-
-        api_key = "1bce8a9184c42475f79f73c5e2f3c60c"
+        import base64, requests
+        api_key   = "1bce8a9184c42475f79f73c5e2f3c60c"
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-
-        response = requests.post(
+        response  = requests.post(
             "https://api.imgbb.com/1/upload",
-            data={
-                "key": api_key,
-                "image": image_b64,
-                "name": filename,
-            },
+            data={"key": api_key, "image": image_b64, "name": filename},
             timeout=30,
         )
-
         result = response.json()
         if result.get("success"):
             return result["data"]["url"]
         else:
             st.error(f"Erreur ImgBB : {result.get('error', {}).get('message', 'Inconnue')}")
             return ""
-
     except Exception as e:
         st.error(f"Erreur upload photo : {e}")
         return ""

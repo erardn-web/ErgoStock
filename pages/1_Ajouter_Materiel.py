@@ -32,26 +32,7 @@ with st.form("form_add_materiel", clear_on_submit=True):
     notes       = st.text_area("Notes internes", placeholder="Observations…")
     submitted   = st.form_submit_button("💾 Enregistrer le matériel", type="primary")
 
-# Photo en dehors du formulaire
-st.divider()
-st.markdown("**📷 Photo du matériel**")
-photo_source = st.radio("Source", ["📸 Prendre une photo", "🔗 URL existante"], horizontal=True)
-
-photo_url = ""
-if photo_source == "📸 Prendre une photo":
-    img = st.camera_input("Prenez une photo")
-    if img:
-        with st.spinner("Upload en cours..."):
-            photo_url = upload_photo_to_drive(
-                img.getvalue(),
-                f"photo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-            )
-        if photo_url:
-            st.success("✅ Photo uploadée !")
-            st.image(img, width=200)
-else:
-    photo_url = st.text_input("URL de la photo", placeholder="https://...")
-
+# ── Provenance (avant la photo) ───────────────────────────────────────────────
 st.divider()
 st.subheader("👤 Provenance (si don ou prêt entrant)")
 
@@ -87,6 +68,27 @@ if personne_sel == "— Nouvelle personne —":
         with pc2:
             p_prenom = st.text_input("Prénom")
 
+# ── Photo (en dernier) ────────────────────────────────────────────────────────
+st.divider()
+st.markdown("**📷 Photo du matériel**")
+photo_source = st.radio("Source", ["⏭️ Pas de photo", "📸 Prendre une photo", "🔗 URL existante"], horizontal=True)
+
+photo_url = ""
+if photo_source == "📸 Prendre une photo":
+    img = st.camera_input("Prenez une photo")
+    if img:
+        with st.spinner("Upload en cours..."):
+            photo_url = upload_photo_to_drive(
+                img.getvalue(),
+                f"photo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+            )
+        if photo_url:
+            st.success("✅ Photo uploadée !")
+            st.image(img, width=200)
+elif photo_source == "🔗 URL existante":
+    photo_url = st.text_input("URL de la photo", placeholder="https://...")
+
+# ── Enregistrement ────────────────────────────────────────────────────────────
 if submitted:
     if not nom.strip():
         st.error("Le nom du matériel est obligatoire.")
@@ -133,7 +135,7 @@ if submitted:
 
         st.success(f"✅ Matériel **{nom}** ajouté avec l'ID **{mat_id}**")
         st.subheader("🔲 QR Code généré")
-        qr_bytes = generate_qr(f"ERGO-STOCK:{mat_id}", size=250)
+        qr_bytes = generate_qr(f"ERGO-STOCK:{mat_id}")
         st.image(qr_bytes, caption=f"QR Code – {nom} ({mat_id})", width=250)
         st.download_button(
             "⬇️ Télécharger le QR Code (PNG)",

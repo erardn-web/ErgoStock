@@ -19,6 +19,26 @@ def load_personnes():
     return get_personnes()
 
 df_p = load_personnes()
+
+# ── Informations générales ────────────────────────────────────────────────────
+st.subheader("📋 Informations générales")
+c1, c2 = st.columns(2)
+with c1:
+    nom       = st.text_input("Nom du matériel *", placeholder="ex : Pince de préhension")
+    categorie = st.selectbox("Catégorie *", CATEGORIES)
+    etat      = st.selectbox("État *", ETATS)
+with c2:
+    mode     = st.selectbox("Mode d'acquisition *", ["Achat", "Don reçu", "Prêt entrant"])
+    date_acq = st.date_input("Date d'acquisition *", value=date.today())
+    valeur   = st.number_input("Valeur (€)", min_value=0.0, step=0.5, value=0.0)
+
+description = st.text_area("Description", placeholder="Marque, référence, caractéristiques…")
+notes       = st.text_area("Notes internes", placeholder="Observations…")
+
+# ── Provenance ────────────────────────────────────────────────────────────────
+st.divider()
+st.subheader("👤 Provenance")
+
 personnes_liste = ["— Aucune / Non renseignée —", "— Nouvelle personne —"]
 if not df_p.empty:
     for _, r in df_p.iterrows():
@@ -28,39 +48,29 @@ if not df_p.empty:
             label = f"{r['Prénom']} {r['Nom']} ({r['Téléphone']}) [{r['ID']}]"
         personnes_liste.append(label)
 
-with st.form("form_add_materiel", clear_on_submit=True):
-    st.subheader("📋 Informations générales")
-    c1, c2 = st.columns(2)
-    with c1:
-        nom       = st.text_input("Nom du matériel *", placeholder="ex : Pince de préhension")
-        categorie = st.selectbox("Catégorie *", CATEGORIES)
-        etat      = st.selectbox("État *", ETATS)
-    with c2:
-        mode     = st.selectbox("Mode d'acquisition *", ["Achat", "Don reçu", "Prêt entrant"])
-        date_acq = st.date_input("Date d'acquisition *", value=date.today())
-        valeur   = st.number_input("Valeur (€)", min_value=0.0, step=0.5, value=0.0)
+personne_sel = st.selectbox("Personne existante", personnes_liste)
 
-    description = st.text_area("Description", placeholder="Marque, référence, caractéristiques…")
-    notes       = st.text_area("Notes internes", placeholder="Observations…")
+p_nom = p_prenom = p_tel = p_email = ""
+p_type = "Patient"
 
-    st.divider()
-    st.markdown("**👤 Provenance**")
-    personne_sel = st.selectbox("Personne existante", personnes_liste)
+if personne_sel == "— Nouvelle personne —":
+    p_type = st.selectbox("Type *", TYPES_PERSONNE, key="prov_type")
+    if p_type == "Professionnel":
+        p_nom   = st.text_input("Nom de la société *")
+        p_tel   = st.text_input("Téléphone")
+        p_email = st.text_input("Email")
+    else:
+        pc1, pc2 = st.columns(2)
+        with pc1:
+            p_nom    = st.text_input("Nom *")
+            p_tel    = st.text_input("Téléphone")
+        with pc2:
+            p_prenom = st.text_input("Prénom")
+            p_email  = st.text_input("Email")
 
-    st.markdown("*Ou saisir une nouvelle personne :*")
-    pc1, pc2 = st.columns(2)
-    with pc1:
-        p_nom    = st.text_input("Nom")
-        p_tel    = st.text_input("Téléphone")
-    with pc2:
-        p_prenom = st.text_input("Prénom")
-        p_type   = st.selectbox("Type", TYPES_PERSONNE)
-
-    submitted = st.form_submit_button("💾 Enregistrer le matériel", type="primary", use_container_width=True)
-
-# Photo en dernier, hors formulaire
+# ── Photo ─────────────────────────────────────────────────────────────────────
 st.divider()
-st.markdown("**📷 Photo du matériel**")
+st.subheader("📷 Photo du matériel")
 photo_source = st.radio("Source", ["⏭️ Pas de photo", "📸 Prendre une photo", "🔗 URL existante"], horizontal=True)
 
 photo_url = ""
@@ -78,9 +88,13 @@ if photo_source == "📸 Prendre une photo":
 elif photo_source == "🔗 URL existante":
     photo_url = st.text_input("URL de la photo", placeholder="https://...")
 
-if submitted:
+# ── Bouton enregistrer ────────────────────────────────────────────────────────
+st.divider()
+if st.button("💾 Enregistrer le matériel", type="primary", use_container_width=True):
     if not nom.strip():
         st.error("Le nom du matériel est obligatoire.")
+    elif personne_sel == "— Nouvelle personne —" and not p_nom.strip():
+        st.error("Le nom de la personne est obligatoire.")
     else:
         with st.spinner("Enregistrement en cours…"):
             mat_id = add_materiel({
@@ -99,21 +113,24 @@ if submitted:
             personne_contact   = ""
 
             if personne_sel not in ["— Aucune / Non renseignée —", "— Nouvelle personne —"]:
-                # Personne existante sélectionnée
                 p_id_sel = personne_sel.split("[")[-1].rstrip("]")
-                p_row = df_p[df_p["ID"] == p_id_sel] if not df_p.empty else None
-                if p_row is not None and not p_row.empty:
-                    pr = p_row.iloc[0]
-                    if pr.get("Type") == "Professionnel":
-                        personne_nom_final = pr.get("Nom", "")
-                    else:
-                        personne_nom_final = f"{pr.get('Prénom','')} {pr.get('Nom','')}".strip()
-                    personne_contact = pr.get("Téléphone", "")
-            elif p_nom.strip():
-                # Nouvelle personne saisie
+                if not df_p.empty:
+                    p_row = df_p[df_p["ID"] == p_id_sel]
+                    if not p_row.empty:
+                        pr = p_row.iloc[0]
+                        if pr.get("Type") == "Professionnel":
+                            personne_nom_final = pr.get("Nom", "")
+                        else:
+                            personne_nom_final = f"{pr.get('Prénom','')} {pr.get('Nom','')}".strip()
+                        personne_contact = pr.get("Téléphone", "")
+
+            elif personne_sel == "— Nouvelle personne —" and p_nom.strip():
                 add_personne({
-                    "Nom": p_nom.strip(), "Prénom": p_prenom.strip(),
-                    "Téléphone": p_tel.strip(), "Type": p_type,
+                    "Nom":       p_nom.strip(),
+                    "Prénom":    p_prenom.strip(),
+                    "Téléphone": p_tel.strip(),
+                    "Email":     p_email.strip(),
+                    "Type":      p_type,
                 })
                 if p_type == "Professionnel":
                     personne_nom_final = p_nom.strip()
@@ -143,3 +160,4 @@ if submitted:
             mime="image/png",
         )
         st.info("💡 Imprimez ce QR code et collez-le sur le matériel.")
+        st.cache_data.clear()

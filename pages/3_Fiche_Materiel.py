@@ -78,7 +78,6 @@ if not mat_id:
 row = df_mat[df_mat["ID"] == mat_id].iloc[0]
 st.divider()
 
-# ── Fiche ──────────────────────────────────────────────────────────────────────
 col_photo, col_info, col_qr = st.columns([2, 3, 2])
 
 with col_photo:
@@ -112,7 +111,7 @@ with col_info:
 
 with col_qr:
     st.subheader("🔲 QR Code")
-    qr_bytes = generate_qr(f"ERGO-STOCK:{mat_id}")
+    qr_bytes = generate_qr(f"ERGO-STOCK:{mat_id}", size=250)
     st.image(qr_bytes, width=200)
     st.download_button(
         "⬇️ Télécharger le QR Code",
@@ -120,7 +119,7 @@ with col_qr:
         file_name=f"qr_{mat_id}.png",
         mime="image/png",
     )
-    st.caption("Format 23×23mm — compatible Brother DK-11221")
+    st.caption("Collez cette étiquette sur le matériel.")
 
 # ── Bouton mouvement ───────────────────────────────────────────────────────────
 st.divider()
@@ -152,7 +151,6 @@ else:
 
 st.divider()
 
-# ── Édition ────────────────────────────────────────────────────────────────────
 with st.expander("✏️ Modifier les informations"):
     with st.form("form_edit"):
         e1, e2 = st.columns(2)
@@ -194,13 +192,9 @@ with st.expander("✏️ Modifier les informations"):
     if save_btn:
         with st.spinner("Mise à jour…"):
             ok = update_materiel(mat_id, {
-                "Nom":         new_nom,
-                "Catégorie":   new_cat,
-                "État":        new_etat,
-                "Photo_URL":   new_photo,
-                "Valeur_EUR":  new_val,
-                "Description": new_desc,
-                "Notes":       new_notes,
+                "Nom": new_nom, "Catégorie": new_cat, "État": new_etat,
+                "Photo_URL": new_photo, "Valeur_EUR": new_val,
+                "Description": new_desc, "Notes": new_notes,
             })
         if ok:
             st.success("✅ Matériel mis à jour.")

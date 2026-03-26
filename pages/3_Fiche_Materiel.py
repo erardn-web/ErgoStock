@@ -200,20 +200,20 @@ with st.expander("✏️ Modifier les informations"):
     st.subheader("📋 Informations générales")
     e1, e2 = st.columns(2)
     with e1:
-        new_nom  = st.text_input("Nom", value=row.get("Nom", ""), key="edit_nom")
+        new_nom  = st.text_input("Nom", value=row.get("Nom", ""), key=f"edit_nom_{mat_id}")
         new_cat  = st.selectbox("Catégorie", CATEGORIES,
                                 index=CATEGORIES.index(row["Catégorie"])
                                 if row.get("Catégorie") in CATEGORIES else 0,
-                                key="edit_cat")
+                                key=f"edit_cat_{mat_id}")
         new_etat = st.selectbox("État", ETATS,
                                 index=ETATS.index(row["État"])
                                 if row.get("État") in ETATS else 0,
-                                key="edit_etat")
+                                key=f"edit_etat_{mat_id}")
     with e2:
-        new_val  = st.text_input("Valeur (€)", value=str(row.get("Valeur_EUR", "")), key="edit_val")
+        new_val  = st.text_input("Valeur (€)", value=str(row.get("Valeur_EUR", "")), key=f"edit_val_{mat_id}")
 
-    new_desc  = st.text_area("Description", value=row.get("Description", ""), key="edit_desc")
-    new_notes = st.text_area("Notes",       value=row.get("Notes", ""),        key="edit_notes")
+    new_desc  = st.text_area("Description", value=row.get("Description", ""), key=f"edit_desc_{mat_id}")
+    new_notes = st.text_area("Notes",       value=row.get("Notes", ""),        key=f"edit_notes_{mat_id}")
 
     # Disponibilités
     st.divider()
@@ -256,36 +256,36 @@ with st.expander("✏️ Modifier les informations"):
                 label = f"{r['Prénom']} {r['Nom']} ({r['Téléphone']}) [{r['ID']}]"
             personnes_liste.append(label)
 
-    prov_sel = st.selectbox("Modifier la provenance", personnes_liste, key="edit_prov_sel")
+    prov_sel = st.selectbox("Modifier la provenance", personnes_liste, key=f"edit_prov_sel_{mat_id}")
 
     new_p_nom = new_p_prenom = new_p_tel = new_p_email = ""
     new_p_type = "Patient"
 
     if prov_sel == "— Nouvelle personne —":
-        new_p_type = st.selectbox("Type *", TYPES_PERSONNE, key="edit_prov_type")
+        new_p_type = st.selectbox("Type *", TYPES_PERSONNE, key=f"edit_prov_type_{mat_id}")
         if new_p_type == "Professionnel":
-            new_p_nom   = st.text_input("Nom de la société *", key="edit_prov_nom")
-            new_p_tel   = st.text_input("Téléphone", key="edit_prov_tel")
-            new_p_email = st.text_input("Email", key="edit_prov_email")
+            new_p_nom   = st.text_input("Nom de la société *", key=f"edit_prov_nom_{mat_id}")
+            new_p_tel   = st.text_input("Téléphone", key=f"edit_prov_tel_{mat_id}")
+            new_p_email = st.text_input("Email", key=f"edit_prov_email_{mat_id}")
         else:
             pp1, pp2 = st.columns(2)
             with pp1:
-                new_p_nom    = st.text_input("Nom *",    key="edit_prov_nom")
-                new_p_tel    = st.text_input("Téléphone", key="edit_prov_tel")
+                new_p_nom    = st.text_input("Nom *",    key=f"edit_prov_nom_{mat_id}")
+                new_p_tel    = st.text_input("Téléphone", key=f"edit_prov_tel_{mat_id}")
             with pp2:
-                new_p_prenom = st.text_input("Prénom",   key="edit_prov_prenom")
-                new_p_email  = st.text_input("Email",    key="edit_prov_email")
+                new_p_prenom = st.text_input("Prénom",   key=f"edit_prov_prenom_{mat_id}")
+                new_p_email  = st.text_input("Email",    key=f"edit_prov_email_{mat_id}")
 
     # Photo
     st.divider()
     st.subheader("📷 Photo")
     photo_source = st.radio(
         "Source", ["⏭️ Garder l'actuelle", "📸 Prendre une photo", "🔗 URL existante"],
-        horizontal=True, key="photo_src_edit"
+        horizontal=True, key=f"photo_src_edit_{mat_id}"
     )
     new_photo = row.get("Photo_URL", "")
     if photo_source == "📸 Prendre une photo":
-        img = st.camera_input("Prenez une photo", key="cam_edit")
+        img = st.camera_input("Prenez une photo", key=f"cam_edit_{mat_id}")
         if img:
             with st.spinner("Upload en cours..."):
                 new_photo = upload_photo_to_drive(
@@ -296,11 +296,11 @@ with st.expander("✏️ Modifier les informations"):
                 st.success("✅ Photo uploadée !")
                 st.image(img, width=200)
     elif photo_source == "🔗 URL existante":
-        new_photo = st.text_input("URL Photo", value=row.get("Photo_URL", ""), key="edit_photo_url")
+        new_photo = st.text_input("URL Photo", value=row.get("Photo_URL", ""), key=f"edit_photo_url_{mat_id}")
 
     # Bouton enregistrer en bas
     st.divider()
-    if st.button("💾 Enregistrer les modifications", type="primary", use_container_width=True, key="btn_save"):
+    if st.button("💾 Enregistrer les modifications", type="primary", use_container_width=True, key=f"btn_save_{mat_id}"):
         with st.spinner("Mise à jour…"):
             ok = update_materiel(mat_id, {
                 "Nom":            new_nom,

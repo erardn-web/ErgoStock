@@ -18,7 +18,7 @@ SHEET_PERSONNES  = "Personnes"
 HEADERS_MATERIEL = [
     "ID", "Nom", "Catégorie", "Description", "État",
     "Photo_URL", "Statut", "Date_Acquisition",
-    "Mode_Acquisition", "Valeur_EUR", "Notes", "Disponibilités"
+    "Mode_Acquisition", "Valeur_EUR", "Notes", "Disponibilités", "Archivé"
 ]
 
 HEADERS_MOUVEMENTS = [
@@ -105,22 +105,6 @@ def get_client():
 def get_spreadsheet():
     client = get_client()
     return client.open(st.secrets["spreadsheet_name"])
-
-
-@st.cache_resource(ttl=3600)
-def get_worksheet(name: str):
-    """Cache worksheet objects pour éviter les appels API répétés."""
-    spreadsheet = get_spreadsheet()
-    for attempt in range(3):
-        try:
-            return spreadsheet.worksheet(name)
-        except gspread.exceptions.WorksheetNotFound:
-            return None
-        except gspread.exceptions.APIError:
-            if attempt < 2:
-                time.sleep(2 ** attempt)
-            else:
-                return None
 
 
 def get_or_create_sheet(spreadsheet, name: str, headers: list):
@@ -228,6 +212,7 @@ def add_materiel(data: dict) -> str:
         data.get("Valeur_EUR", ""),
         data.get("Notes", ""),
         data.get("Disponibilités", ""),
+        data.get("Archivé", ""),
     ]
     ws.append_row(row)
     return mat_id

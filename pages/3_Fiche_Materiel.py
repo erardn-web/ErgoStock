@@ -6,8 +6,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.gsheets import (
     get_materiel, get_historique_materiel, update_materiel,
-    STATUS_COLORS, CATEGORIES, ETATS, upload_photo_to_drive,
-    DISPONIBILITES_OPTIONS, encode_disponibilites, decode_disponibilites
+    STATUS_COLORS, CATEGORIES, ETATS, upload_photo_to_drive
 )
 from utils.qrcode_utils import generate_qr
 
@@ -97,7 +96,6 @@ with col_photo:
 with col_info:
     st.subheader(f"{STATUS_COLORS.get(row['Statut'], '⚪')} {row['Nom']}")
     st.markdown(f"**ID :** `{row['ID']}`")
-
     data_display = {
         "Catégorie":          row.get("Catégorie", ""),
         "Description":        row.get("Description", ""),
@@ -111,13 +109,6 @@ with col_info:
     for k, v in data_display.items():
         if v:
             st.markdown(f"**{k} :** {v}")
-
-    # Disponibilités
-    dispos = decode_disponibilites(row.get("Disponibilités", ""))
-    if dispos:
-        icons = {"À tester": "🔬", "À prêter": "🤝", "À vendre": "💶"}
-        badges = "  ".join([f"{icons.get(d, '•')} **{d}**" for d in dispos])
-        st.markdown(f"**Disponibilités :** {badges}")
 
 with col_qr:
     st.subheader("🔲 QR Code")
@@ -177,18 +168,7 @@ with st.expander("✏️ Modifier les informations"):
             new_val = st.text_input("Valeur (€)", value=str(row.get("Valeur_EUR", "")))
 
         new_desc  = st.text_area("Description", value=row.get("Description", ""))
-
-        st.markdown("**🏷️ Disponibilités**")
-        dispos_actuelles = decode_disponibilites(row.get("Disponibilités", ""))
-        dc1, dc2, dc3 = st.columns(3)
-        with dc1:
-            dispo_tester = st.checkbox("🔬 À tester",  value="À tester" in dispos_actuelles)
-        with dc2:
-            dispo_preter = st.checkbox("🤝 À prêter",  value="À prêter" in dispos_actuelles)
-        with dc3:
-            dispo_vendre = st.checkbox("💶 À vendre",  value="À vendre" in dispos_actuelles)
-
-        new_notes = st.text_area("Notes", value=row.get("Notes", ""))
+        new_notes = st.text_area("Notes",       value=row.get("Notes", ""))
         save_btn  = st.form_submit_button("💾 Enregistrer les modifications", type="primary")
 
     st.markdown("**📷 Modifier la photo**")
@@ -212,21 +192,15 @@ with st.expander("✏️ Modifier les informations"):
         new_photo = st.text_input("URL Photo", value=row.get("Photo_URL", ""))
 
     if save_btn:
-        dispos_selected = []
-        if dispo_tester: dispos_selected.append("À tester")
-        if dispo_preter: dispos_selected.append("À prêter")
-        if dispo_vendre: dispos_selected.append("À vendre")
-
         with st.spinner("Mise à jour…"):
             ok = update_materiel(mat_id, {
-                "Nom":            new_nom,
-                "Catégorie":      new_cat,
-                "État":           new_etat,
-                "Photo_URL":      new_photo,
-                "Valeur_EUR":     new_val,
-                "Description":    new_desc,
-                "Disponibilités": encode_disponibilites(dispos_selected),
-                "Notes":          new_notes,
+                "Nom":         new_nom,
+                "Catégorie":   new_cat,
+                "État":        new_etat,
+                "Photo_URL":   new_photo,
+                "Valeur_EUR":  new_val,
+                "Description": new_desc,
+                "Notes":       new_notes,
             })
         if ok:
             st.success("✅ Matériel mis à jour.")

@@ -19,13 +19,13 @@ def load_personnes():
     return get_personnes()
 
 df_p = load_personnes()
-personnes_liste = ["— Aucune / Non renseignée —"]
+personnes_liste = ["— Aucune / Non renseignée —", "— Nouvelle personne —"]
 if not df_p.empty:
     for _, r in df_p.iterrows():
         if r.get("Type") == "Professionnel":
             label = f"{r['Nom']} (Pro) [{r['ID']}]"
         else:
-            label = f"{r['Prénom']} {r['Nom']} ({r['ID']})"
+            label = f"{r['Prénom']} {r['Nom']} ({r['Téléphone']}) [{r['ID']}]"
         personnes_liste.append(label)
 
 with st.form("form_add_materiel", clear_on_submit=True):
@@ -45,17 +45,16 @@ with st.form("form_add_materiel", clear_on_submit=True):
 
     st.divider()
     st.markdown("**👤 Provenance**")
-    personne_sel = st.selectbox("Personne (donateur / prêteur / vendeur)", personnes_liste)
+    personne_sel = st.selectbox("Personne existante", personnes_liste)
 
-    if personne_sel == "— Aucune / Non renseignée —":
-        p_nom = p_prenom = p_tel = ""
-    else:
-        pc1, pc2 = st.columns(2)
-        with pc1:
-            p_nom = st.text_input("Nom")
-            p_tel = st.text_input("Téléphone")
-        with pc2:
-            p_prenom = st.text_input("Prénom")
+    st.markdown("*Ou saisir une nouvelle personne :*")
+    pc1, pc2 = st.columns(2)
+    with pc1:
+        p_nom    = st.text_input("Nom")
+        p_tel    = st.text_input("Téléphone")
+    with pc2:
+        p_prenom = st.text_input("Prénom")
+        p_type   = st.selectbox("Type", TYPES_PERSONNE)
 
     submitted = st.form_submit_button("💾 Enregistrer le matériel", type="primary", use_container_width=True)
 
@@ -96,20 +95,33 @@ if submitted:
                 "Notes":            notes,
             })
 
-            personne_contact   = ""
             personne_nom_final = ""
+            personne_contact   = ""
 
-            if personne_sel != "— Aucune / Non renseignée —":
-                personne_nom_final = personne_sel.split(" [")[0]
-            elif p_nom.strip() if 'p_nom' in dir() else False:
+            if personne_sel not in ["— Aucune / Non renseignée —", "— Nouvelle personne —"]:
+                # Personne existante sélectionnée
+                p_id_sel = personne_sel.split("[")[-1].rstrip("]")
+                p_row = df_p[df_p["ID"] == p_id_sel] if not df_p.empty else None
+                if p_row is not None and not p_row.empty:
+                    pr = p_row.iloc[0]
+                    if pr.get("Type") == "Professionnel":
+                        personne_nom_final = pr.get("Nom", "")
+                    else:
+                        personne_nom_final = f"{pr.get('Prénom','')} {pr.get('Nom','')}".strip()
+                    personne_contact = pr.get("Téléphone", "")
+            elif p_nom.strip():
+                # Nouvelle personne saisie
                 add_personne({
                     "Nom": p_nom.strip(), "Prénom": p_prenom.strip(),
-                    "Téléphone": p_tel.strip(), "Type": "Autre",
+                    "Téléphone": p_tel.strip(), "Type": p_type,
                 })
-                personne_nom_final = f"{p_prenom} {p_nom}".strip()
-                personne_contact   = p_tel.strip()
+                if p_type == "Professionnel":
+                    personne_nom_final = p_nom.strip()
+                else:
+                    personne_nom_final = f"{p_prenom} {p_nom}".strip()
+                personne_contact = p_tel.strip()
 
-            if mode in ["Don reçu", "Prêt entrant"] or personne_nom_final:
+            if personne_nom_final or mode in ["Don reçu", "Prêt entrant"]:
                 add_mouvement({
                     "ID_Matériel":    mat_id,
                     "Nom_Matériel":   nom.strip(),

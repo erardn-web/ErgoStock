@@ -66,7 +66,7 @@ if view_mode == "🗂️ Tableau":
     if selected and selected["selection"]["rows"]:
         idx    = selected["selection"]["rows"][0]
         mat_id = filtered.iloc[idx]["ID"]
-        st.query_params["mat_id"] = mat_id
+        st.session_state["fiche_mat_id"] = mat_id
         st.switch_page("pages/3_Fiche_Materiel.py")
 
 else:
@@ -89,7 +89,7 @@ else:
                     f"**Statut :** {item.get('Statut','')}"
                 )
                 if st.button("🔍 Voir la fiche", key=f"btn_{item['ID']}"):
-                    st.query_params["mat_id"] = item["ID"]
+                    st.session_state["fiche_mat_id"] = item["ID"]
                     st.switch_page("pages/3_Fiche_Materiel.py")
 
 st.divider()

@@ -14,7 +14,14 @@ st.set_page_config(page_title="Ajouter – ErgoStock", page_icon="➕", layout="
 st.title("➕ Ajouter du matériel")
 st.divider()
 
+@st.cache_data(ttl=60)
+def load_personnes():
+    return get_personnes()
+
 modes_acquisition = ["Achat", "Don reçu", "Prêt entrant"]
+
+# Mode d'acquisition HORS formulaire pour rendu dynamique de la section Provenance
+mode = st.selectbox("Mode d'acquisition *", modes_acquisition, key="mode_acq")
 
 with st.form("form_add_materiel", clear_on_submit=True):
     st.subheader("📋 Informations générales")
@@ -24,51 +31,48 @@ with st.form("form_add_materiel", clear_on_submit=True):
         categorie = st.selectbox("Catégorie *", CATEGORIES)
         etat      = st.selectbox("État *", ETATS)
     with c2:
-        mode     = st.selectbox("Mode d'acquisition *", modes_acquisition)
         date_acq = st.date_input("Date d'acquisition *", value=date.today())
         valeur   = st.number_input("Valeur (€)", min_value=0.0, step=0.5, value=0.0)
 
     description = st.text_area("Description", placeholder="Marque, référence, caractéristiques…")
     notes       = st.text_area("Notes internes", placeholder="Observations…")
-    submitted   = st.form_submit_button("💾 Enregistrer le matériel", type="primary")
 
-# ── Provenance (avant la photo) ───────────────────────────────────────────────
-st.divider()
-st.subheader("👤 Provenance (si don ou prêt entrant)")
+    # Provenance — visible uniquement si Don reçu ou Prêt entrant
+    personne_sel = "— Nouvelle personne —"
+    p_nom = p_prenom = p_tel = ""
+    p_type_new = "Patient"
 
-@st.cache_data(ttl=60)
-def load_personnes():
-    return get_personnes()
+    if mode in ["Don reçu", "Prêt entrant"]:
+        st.divider()
+        st.markdown("**👤 Provenance**")
+        df_p = load_personnes()
+        personnes_liste = ["— Nouvelle personne —"]
+        if not df_p.empty:
+            for _, r in df_p.iterrows():
+                if r.get("Type") == "Professionnel":
+                    label = f"{r['Nom']} (Pro) [{r['ID']}]"
+                else:
+                    label = f"{r['Prénom']} {r['Nom']} ({r['ID']})"
+                personnes_liste.append(label)
 
-df_p = load_personnes()
-personnes_liste = ["— Nouvelle personne —"]
-if not df_p.empty:
-    for _, r in df_p.iterrows():
-        if r.get("Type") == "Professionnel":
-            label = f"{r['Nom']} (Pro) [{r['ID']}]"
-        else:
-            label = f"{r['Prénom']} {r['Nom']} ({r['ID']})"
-        personnes_liste.append(label)
+        personne_sel = st.selectbox("Personne (donateur / prêteur)", personnes_liste)
 
-personne_sel = st.selectbox("Personne (donateur / prêteur)", personnes_liste)
+        if personne_sel == "— Nouvelle personne —":
+            pc1, pc2 = st.columns(2)
+            with pc1:
+                p_nom = st.text_input("Nom")
+                p_tel = st.text_input("Téléphone")
+            with pc2:
+                p_prenom = st.text_input("Prénom")
 
-p_nom = p_prenom = p_tel = ""
+    submitted = st.form_submit_button("💾 Enregistrer le matériel", type="primary", use_container_width=True)
+
+# Type de personne HORS formulaire (dynamique selon sélection)
 p_type_new = "Patient"
-if personne_sel == "— Nouvelle personne —":
-    p_type_new = st.selectbox("Type", TYPES_PERSONNE, key="acq_type")
-    if p_type_new == "Professionnel":
-        p_nom    = st.text_input("Nom de la société")
-        p_prenom = ""
-        p_tel    = st.text_input("Téléphone")
-    else:
-        pc1, pc2 = st.columns(2)
-        with pc1:
-            p_nom = st.text_input("Nom")
-            p_tel = st.text_input("Téléphone")
-        with pc2:
-            p_prenom = st.text_input("Prénom")
+if mode in ["Don reçu", "Prêt entrant"] and personne_sel == "— Nouvelle personne —":
+    p_type_new = st.selectbox("Type de personne", TYPES_PERSONNE, key="acq_type")
 
-# ── Photo (en dernier) ────────────────────────────────────────────────────────
+# Photo en dernier
 st.divider()
 st.markdown("**📷 Photo du matériel**")
 photo_source = st.radio("Source", ["⏭️ Pas de photo", "📸 Prendre une photo", "🔗 URL existante"], horizontal=True)
@@ -88,7 +92,6 @@ if photo_source == "📸 Prendre une photo":
 elif photo_source == "🔗 URL existante":
     photo_url = st.text_input("URL de la photo", placeholder="https://...")
 
-# ── Enregistrement ────────────────────────────────────────────────────────────
 if submitted:
     if not nom.strip():
         st.error("Le nom du matériel est obligatoire.")

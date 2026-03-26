@@ -18,7 +18,7 @@ SHEET_PERSONNES  = "Personnes"
 HEADERS_MATERIEL = [
     "ID", "Nom", "Catégorie", "Description", "État",
     "Photo_URL", "Statut", "Date_Acquisition",
-    "Mode_Acquisition", "Valeur_EUR", "Disponibilités", "Notes"
+    "Mode_Acquisition", "Valeur_EUR", "Notes"
 ]
 
 HEADERS_MOUVEMENTS = [
@@ -40,8 +40,6 @@ STATUS_COLORS = {
     "En réparation": "🟠",
     "Hors service":  "❌",
 }
-
-DISPONIBILITES_OPTIONS = ["À tester", "À prêter", "À vendre"]
 
 TYPES_MOUVEMENT = [
     "Achat", "Don reçu", "Prêt entrant", "Prêt sortant",
@@ -169,20 +167,6 @@ def get_historique_materiel(mat_id: str) -> pd.DataFrame:
     return filtered.sort_values("Date", ascending=False)
 
 
-# ── Helpers disponibilités ────────────────────────────────────────────────────
-
-def encode_disponibilites(selected: list) -> str:
-    """Encode la liste cochée en string séparé par virgules."""
-    return ", ".join(selected)
-
-
-def decode_disponibilites(value: str) -> list:
-    """Décode le string stocké en liste."""
-    if not value:
-        return []
-    return [v.strip() for v in value.split(",") if v.strip() in DISPONIBILITES_OPTIONS]
-
-
 # ── Écriture ──────────────────────────────────────────────────────────────────
 
 def _gen_id() -> str:
@@ -204,7 +188,6 @@ def add_materiel(data: dict) -> str:
         data.get("Date_Acquisition", datetime.now().strftime("%Y-%m-%d")),
         data.get("Mode_Acquisition", ""),
         data.get("Valeur_EUR", ""),
-        data.get("Disponibilités", ""),
         data.get("Notes", ""),
     ]
     ws.append_row(row)

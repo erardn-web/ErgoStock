@@ -69,6 +69,7 @@ display_df["Statut"] = display_df["Statut"].apply(lambda s: f"{STATUS_COLORS.get
 selected = st.dataframe(
     display_df, use_container_width=True, hide_index=True,
     on_select="rerun", selection_mode="single-row",
+    height=200,
 )
 
 mat_id = None

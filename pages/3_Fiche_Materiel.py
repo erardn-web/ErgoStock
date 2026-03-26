@@ -35,7 +35,7 @@ if df_mat.empty:
     st.stop()
 
 params       = st.query_params
-preselect_id = params.get("mat_id", "")
+preselect_id = st.session_state.pop("fiche_mat_id", "") or st.query_params.get("mat_id", "")
 
 with st.expander("🔍 Rechercher un article", expanded=True):
     fc1, fc2, fc3 = st.columns(3)

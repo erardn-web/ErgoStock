@@ -5,6 +5,9 @@ import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.gsheets import (
+from utils.auth import require_login
+require_login()
+
     get_materiel, get_personnes, get_mouvements, add_mouvement, add_personne,
     update_materiel, TYPES_MOUVEMENT, STATUS_COLORS, ETATS, TYPES_PERSONNE
 )
@@ -49,15 +52,14 @@ if df_mat.empty:
     st.warning("Aucun matériel enregistré.")
     st.stop()
 
-# ── Gestion de la pré-sélection ───────────────────────────────────────────────
-# Si on arrive depuis la fiche, on stocke dans un état persistant
+# Pré-sélection via session_state (depuis fiche matériel)
 if "mouvement_mat_id" in st.session_state and st.session_state["mouvement_mat_id"]:
     st.session_state["mouvement_mat_id_actif"] = st.session_state.pop("mouvement_mat_id")
 
 preselect_mat_id = st.session_state.get("mouvement_mat_id_actif", "")
 mat_id = None
 
-# ── Si article pré-sélectionné : affichage direct ─────────────────────────────
+# ── Si article pré-sélectionné ────────────────────────────────────────────────
 if preselect_mat_id and preselect_mat_id in df_mat["ID"].values:
     mat_id = preselect_mat_id
     found  = df_mat[df_mat["ID"] == mat_id].iloc[0]
@@ -109,6 +111,7 @@ else:
 
     idx    = selected["selection"]["rows"][0]
     mat_id = filtered.iloc[idx]["ID"]
+    st.session_state.pop("mouvement_mat_id_actif", None)
 
 if not mat_id:
     st.stop()
@@ -116,7 +119,6 @@ if not mat_id:
 row = df_mat[df_mat["ID"] == mat_id].iloc[0]
 
 st.divider()
-
 c1, c2, c3 = st.columns(3)
 c1.metric("Nom", row["Nom"])
 c2.metric("Statut", f"{STATUS_COLORS.get(row['Statut'], '⚪')} {row['Statut']}")
@@ -142,7 +144,7 @@ date_retour = None
 if need_retour:
     date_retour = st.date_input("📅 Date de retour prévue", value=None)
 
-# État — retour ou sortie directe depuis réparation
+# État au retour ou depuis réparation
 new_etat  = None
 need_etat = (
     type_mv in ["Retour", "Retour de réparation"] or
@@ -253,7 +255,7 @@ if st.button("💾 Enregistrer le mouvement", type="primary", use_container_widt
     if (need_person and not (is_retour and personne_retour_nom)
             and personne_sel == "— Nouvelle personne —"
             and not p_nom.strip()):
-        errors.append("Le nom est obligatoire.")
+        errors.append("Le nom de la personne est obligatoire.")
     if errors:
         for e in errors: st.error(e)
     else:
@@ -284,7 +286,6 @@ if st.button("💾 Enregistrer le mouvement", type="primary", use_container_widt
             if new_etat and new_etat != row["État"]:
                 update_materiel(mat_id, {"État": new_etat})
 
-        # Nettoyer la session après enregistrement
         if "mouvement_mat_id_actif" in st.session_state:
             del st.session_state["mouvement_mat_id_actif"]
 

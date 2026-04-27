@@ -5,6 +5,9 @@ import sys, os
 
 sys.path.insert(0, os.path.dirname(__file__))
 from utils.gsheets import init_sheets, get_materiel, get_mouvements, STATUS_COLORS
+from utils.auth import require_login
+require_login()
+
 
 st.markdown("""
 <style>

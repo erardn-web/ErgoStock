@@ -10,6 +10,9 @@ from utils.gsheets import (
     encode_disponibilites
 )
 from utils.qrcode_utils import generate_qr
+from utils.auth import require_login
+require_login()
+
 
 st.set_page_config(page_title="Ajouter – ErgoStock", page_icon="➕", layout="centered")
 st.title("➕ Ajouter du matériel")

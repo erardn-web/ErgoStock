@@ -3,6 +3,8 @@ import pandas as pd
 import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from utils.auth import require_login
+require_login()
 from utils.gsheets import get_personnes, add_personne, update_personne, get_mouvements, TYPES_PERSONNE
 
 st.set_page_config(page_title="Personnes – ErgoStock", page_icon="👥", layout="wide")
@@ -22,7 +24,6 @@ def afficher_nom(row):
 
 tab1, tab2 = st.tabs(["📋 Liste des personnes", "➕ Ajouter une personne"])
 
-# ── Onglet liste ───────────────────────────────────────────────────────────────
 with tab1:
     if df_p.empty:
         st.info("Aucune personne enregistrée.")
@@ -63,8 +64,8 @@ with tab1:
         if not selected or not selected["selection"]["rows"]:
             st.info("👆 Cliquez sur une personne pour voir sa fiche.")
         else:
-            idx   = selected["selection"]["rows"][0]
-            p_id  = filtered.iloc[idx]["ID"]
+            idx  = selected["selection"]["rows"][0]
+            p_id = filtered.iloc[idx]["ID"]
             p_row = df_p[df_p["ID"] == p_id].iloc[0]
 
             st.divider()
@@ -97,47 +98,36 @@ with tab1:
                 else:
                     st.info("Aucun mouvement enregistré pour cette personne.")
 
-            # ── Modifier ──────────────────────────────────────────────────────
             with st.expander("✏️ Modifier"):
-                # Type EN DEHORS du formulaire
-                p_type_e = st.selectbox(
-                    "Type *", TYPES_PERSONNE,
-                    index=TYPES_PERSONNE.index(p_row["Type"])
-                    if p_row.get("Type") in TYPES_PERSONNE else 0,
-                    key="edit_type"
-                )
-
                 with st.form("form_edit_p"):
+                    p_type_e = st.selectbox("Type *", TYPES_PERSONNE,
+                        index=TYPES_PERSONNE.index(p_row["Type"])
+                        if p_row.get("Type") in TYPES_PERSONNE else 0
+                    )
                     if p_type_e == "Professionnel":
-                        e_nom    = st.text_input("Nom de la société *", value=p_row.get("Nom", ""))
+                        e_nom    = st.text_input("Nom de la société *", value=p_row.get("Nom",""))
                         e_prenom = ""
                     else:
                         ec1, ec2 = st.columns(2)
                         with ec1:
-                            e_nom    = st.text_input("Nom *",  value=p_row.get("Nom", ""))
+                            e_nom = st.text_input("Nom *", value=p_row.get("Nom",""))
                         with ec2:
-                            e_prenom = st.text_input("Prénom", value=p_row.get("Prénom", ""))
-
-                    e_tel   = st.text_input("Téléphone", value=p_row.get("Téléphone", ""))
-                    e_email = st.text_input("Email",     value=p_row.get("Email", ""))
-                    e_notes = st.text_area("Notes",      value=p_row.get("Notes", ""))
+                            e_prenom = st.text_input("Prénom", value=p_row.get("Prénom",""))
+                    e_tel   = st.text_input("Téléphone", value=p_row.get("Téléphone",""))
+                    e_email = st.text_input("Email",     value=p_row.get("Email",""))
+                    e_notes = st.text_area("Notes",      value=p_row.get("Notes",""))
 
                     if st.form_submit_button("💾 Enregistrer", type="primary"):
                         ok = update_personne(p_id, {
-                            "Nom":       e_nom,
-                            "Prénom":    e_prenom,
-                            "Téléphone": e_tel,
-                            "Email":     e_email,
-                            "Type":      p_type_e,
-                            "Notes":     e_notes,
+                            "Nom": e_nom, "Prénom": e_prenom,
+                            "Téléphone": e_tel, "Email": e_email,
+                            "Type": p_type_e, "Notes": e_notes
                         })
                         if ok:
                             st.success("✅ Personne mise à jour.")
                             st.cache_data.clear()
 
-# ── Onglet ajout ───────────────────────────────────────────────────────────────
 with tab2:
-    # Type EN DEHORS du formulaire
     p_type_a = st.selectbox("Type *", TYPES_PERSONNE, key="add_type")
 
     with st.form("form_add_p", clear_on_submit=True):
@@ -160,12 +150,9 @@ with tab2:
                 st.error("Le nom est obligatoire.")
             else:
                 p_id = add_personne({
-                    "Nom":       a_nom.strip(),
-                    "Prénom":    a_prenom.strip() if a_prenom else "",
-                    "Téléphone": a_tel.strip(),
-                    "Email":     a_email.strip(),
-                    "Type":      p_type_a,
-                    "Notes":     a_notes,
+                    "Nom": a_nom.strip(), "Prénom": a_prenom.strip(),
+                    "Téléphone": a_tel.strip(), "Email": a_email.strip(),
+                    "Type": p_type_a, "Notes": a_notes,
                 })
                 st.success(f"✅ Personne ajoutée avec l'ID **{p_id}**.")
                 st.cache_data.clear()

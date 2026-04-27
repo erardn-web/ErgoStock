@@ -4,15 +4,14 @@ import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.gsheets import (
+from utils.auth import require_login
+require_login()
+
     get_materiel, get_personnes, add_mouvement, add_personne,
     update_materiel, STATUS_COLORS, ETATS, TYPES_PERSONNE
 )
 
-st.set_page_config(
-    page_title="Scanner QR – ErgoStock",
-    page_icon="📷",
-    layout="centered"
-)
+st.set_page_config(page_title="Scanner QR – ErgoStock", page_icon="📷", layout="centered")
 st.title("📷 Scanner un QR Code")
 st.caption("Pointez la caméra vers le QR code collé sur le matériel.")
 st.divider()
@@ -46,12 +45,9 @@ else:
     mat_id = raw.strip()
 
 @st.cache_data(ttl=30)
-def load_mat():
-    return get_materiel()
-
+def load_mat(): return get_materiel()
 @st.cache_data(ttl=30)
-def load_pers():
-    return get_personnes()
+def load_pers(): return get_personnes()
 
 with st.spinner("Recherche du matériel..."):
     df_mat = load_mat()
@@ -170,7 +166,7 @@ notes_mv = st.text_area("Notes", placeholder="Observations…")
 if st.button("💾 Enregistrer", type="primary", use_container_width=True):
     errors = []
     if need_person and personne_sel == "— Nouvelle personne —" and not p_nom.strip():
-        errors.append("Le nom est obligatoire.")
+        errors.append("Le nom de la personne est obligatoire.")
     if errors:
         for e in errors: st.error(e)
     else:

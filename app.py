@@ -1,15 +1,17 @@
 import streamlit as st
-from utils.auth import require_login, sidebar_user
+from utils.auth import login_page, sidebar_user
 
 st.set_page_config(
     page_title="ErgoStock – Cabinet d'ergothérapie",
     page_icon="🏥", layout="wide", initial_sidebar_state="expanded",
 )
 
-# Vérification du login avant tout
-require_login()
+# Bloquer AVANT st.navigation
+if not st.session_state.get("logged_in"):
+    login_page()
+    st.stop()
 
-# Infos utilisateur dans la sidebar
+# Utilisateur connecté — afficher la sidebar et la navigation
 sidebar_user()
 
 pg = st.navigation({

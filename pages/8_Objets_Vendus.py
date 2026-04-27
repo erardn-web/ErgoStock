@@ -5,6 +5,9 @@ import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.gsheets import get_materiel, get_mouvements, update_materiel, STATUS_COLORS
+from utils.auth import require_login
+require_login()
+
 
 st.set_page_config(page_title="Objets vendus – ErgoStock", page_icon="💼", layout="wide")
 st.title("💼 Objets vendus — Suivi des actions")

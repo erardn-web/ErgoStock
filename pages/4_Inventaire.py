@@ -4,6 +4,9 @@ import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.gsheets import get_materiel, STATUS_COLORS
+from utils.auth import require_login
+require_login()
+
 
 st.set_page_config(page_title="Inventaire – ErgoStock", page_icon="📦", layout="wide")
 st.title("📦 Inventaire du matériel")

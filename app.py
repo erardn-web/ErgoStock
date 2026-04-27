@@ -1,136 +1,153 @@
-import hashlib
 import streamlit as st
-import gspread
-from google.oauth2.service_account import Credentials
 import pandas as pd
+from datetime import datetime
+import sys, os
 
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
-]
-
-ROLES_AUTORISES = ["admin", "thérapeute"]
-METIERS_AUTORISES = ["Ergo"]  # seuls les Ergo + admin ont accès
-
-
-def hash_password(password: str) -> str:
-    return hashlib.sha256(password.strip().encode()).hexdigest()
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from utils.gsheets import get_materiel, get_mouvements, update_materiel, STATUS_COLORS
+from utils.auth import require_login
+require_login()
 
 
-@st.cache_data(ttl=300)
-def load_utilisateurs_rh() -> pd.DataFrame:
-    """Charge l'onglet Utilisateurs du GSheet 36.9_RH."""
-    try:
-        creds_dict = dict(st.secrets["gcp_service_account"])
-        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-        client = gspread.authorize(creds)
-        sheet = client.open(st.secrets["rh_spreadsheet_name"])
-        ws = sheet.worksheet("Utilisateurs")
-        data = ws.get_all_records()
-        if not data:
-            return pd.DataFrame()
-        return pd.DataFrame(data)
-    except Exception as e:
-        st.error(f"Erreur chargement utilisateurs RH : {e}")
-        return pd.DataFrame()
+st.set_page_config(page_title="Objets vendus – ErgoStock", page_icon="💼", layout="wide")
+st.title("💼 Objets vendus — Suivi des actions")
+st.caption("Liste du matériel vendu pour lequel une action est à faire (commande, information fournisseur…)")
+st.divider()
 
+@st.cache_data(ttl=30)
+def load_mat():
+    return get_materiel()
 
-def check_login(login: str, password: str):
-    """Vérifie les credentials et les droits d'accès ErgoStock."""
-    df = load_utilisateurs_rh()
-    if df.empty:
-        return None, "Impossible de charger les utilisateurs."
+@st.cache_data(ttl=30)
+def load_mv():
+    return get_mouvements()
 
-    # Filtrer comptes actifs
-    if "must_actif" in df.columns:
-        df = df[df["must_actif"].astype(str).isin(["1", "true", "oui", "yes", "True"])]
+with st.spinner("Chargement…"):
+    df_mat = load_mat()
+    df_mv  = load_mv()
 
-    # Chercher le login + mot de passe
-    match = df[
-        (df["login"].astype(str).str.strip() == login.strip()) &
-        (df["mot_de_passe_hash"].astype(str) == hash_password(password))
-    ]
+if df_mat.empty:
+    st.info("Aucun matériel enregistré.")
+    st.stop()
 
-    if match.empty:
-        return None, "Identifiant ou mot de passe incorrect."
+# Filtrer les vendus
+vendus = df_mat[df_mat["Statut"] == "Vendu"].copy()
 
-    user = match.iloc[0]
-    role   = str(user.get("role", "")).strip().lower()
-    metier = str(user.get("metier", "")).strip()
+if vendus.empty:
+    st.success("✅ Aucun objet vendu pour le moment.")
+    st.stop()
 
-    # Vérifier les droits d'accès
-    if role == "admin":
-        return user, None
-    if metier in METIERS_AUTORISES:
-        return user, None
+# Séparer archivés et à traiter
+if "Archivé" not in vendus.columns:
+    vendus["Archivé"] = ""
 
-    return None, f"Accès non autorisé pour le métier : {metier}."
+a_traiter = vendus[vendus["Archivé"] != "oui"].copy()
+archives  = vendus[vendus["Archivé"] == "oui"].copy()
 
+# Enrichir avec la date de vente et la personne depuis les mouvements
+if not df_mv.empty:
+    ventes = (
+        df_mv[df_mv["Type_Mouvement"] == "Vente"]
+        .sort_values("Date", ascending=False)
+        .drop_duplicates(subset="ID_Matériel", keep="first")
+        [["ID_Matériel", "Date", "Personne", "Contact", "Notes"]]
+        .rename(columns={
+            "Date":    "Date_Vente",
+            "Personne": "Acheteur",
+            "Contact":  "Contact_Acheteur",
+            "Notes":    "Notes_Vente",
+        })
+    )
+    a_traiter = a_traiter.merge(ventes, left_on="ID", right_on="ID_Matériel", how="left")
+    archives  = archives.merge(ventes,  left_on="ID", right_on="ID_Matériel", how="left")
 
-def login_page():
-    """Affiche la page de connexion ErgoStock."""
-    st.markdown("""
-    <div style='text-align:center; padding: 40px 0 20px 0;'>
-        <span style='font-size:3rem;'>🏥</span>
-        <h1 style='margin:0;'>ErgoStock</h1>
-        <p style='color:#888;'>Gestion du matériel d'ergothérapie</p>
-    </div>
-    """, unsafe_allow_html=True)
+# ── À traiter ─────────────────────────────────────────────────────────────────
+st.subheader(f"🔴 À traiter ({len(a_traiter)} objet(s))")
 
-    col = st.columns([1, 2, 1])[1]
-    with col:
-        with st.form("login_form"):
-            login    = st.text_input("👤 Identifiant", placeholder="Votre login")
-            password = st.text_input("🔑 Mot de passe", type="password")
-            submit   = st.form_submit_button("Se connecter", type="primary", use_container_width=True)
+if a_traiter.empty:
+    st.success("✅ Tout a été traité !")
+else:
+    for _, row in a_traiter.iterrows():
+        with st.container(border=True):
+            c1, c2, c3 = st.columns([3, 2, 1])
 
-        if submit:
-            if not login.strip() or not password.strip():
-                st.error("Veuillez remplir tous les champs.")
-            else:
-                with st.spinner("Vérification…"):
-                    user, erreur = check_login(login, password)
-                if user is not None:
-                    st.session_state["logged_in"]    = True
-                    st.session_state["user_id"]      = user["id"]
-                    st.session_state["user_nom"]     = user["nom"]
-                    st.session_state["user_login"]   = user["login"]
-                    st.session_state["user_role"]    = user["role"]
-                    st.session_state["user_metier"]  = user.get("metier", "")
+            with c1:
+                st.markdown(f"### 📦 {row['Nom']}")
+                st.markdown(f"**ID :** `{row['ID']}` · **Catégorie :** {row.get('Catégorie', '')} · **État :** {row.get('État', '')}")
+                if row.get("Date_Vente"):
+                    st.markdown(f"📅 Vendu le : **{row['Date_Vente']}**")
+                if row.get("Acheteur"):
+                    ligne = f"👤 Acheteur : **{row['Acheteur']}**"
+                    if row.get("Contact_Acheteur"):
+                        ligne += f" · 📞 {row['Contact_Acheteur']}"
+                    st.markdown(ligne)
+                if row.get("Notes_Vente"):
+                    st.markdown(f"💬 *{row['Notes_Vente']}*")
+                if row.get("Valeur_EUR"):
+                    st.markdown(f"💶 Valeur : **{row['Valeur_EUR']} €**")
+
+            with c2:
+                st.markdown("**Action effectuée :**")
+                action = st.multiselect(
+                    "Action",
+                    [
+                        "✅ Fournisseur informé",
+                        "✅ Remplacement commandé",
+                        "✅ Aucune action requise",
+                        "✅ Autre action effectuée",
+                    ],
+                    key=f"action_{row['ID']}",
+                    placeholder="Sélectionner une ou plusieurs actions…",
+                    label_visibility="collapsed",
+                )
+                note_action = st.text_input(
+                    "Note (optionnel)", key=f"note_{row['ID']}",
+                    placeholder="Détail de l'action…"
+                )
+
+            with c3:
+                st.markdown("&nbsp;")
+                if st.button(
+                    "📁 Archiver", key=f"archive_{row['ID']}",
+                    type="primary", use_container_width=True,
+                    disabled=(len(action) == 0),
+                ):
+                    horodatage = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    note_finale = f"{', '.join(action)} — {horodatage}"
+                    if note_action.strip():
+                        note_finale += f" — {note_action.strip()}"
+                    update_materiel(row["ID"], {"Archivé": "oui"})
+                    # Ajouter la note dans les notes du matériel
+                    notes_existantes = row.get("Notes", "")
+                    nouvelle_note = f"{notes_existantes}\n[VENTE ARCHIVÉE] {note_finale}".strip()
+                    update_materiel(row["ID"], {"Notes": nouvelle_note})
+                    st.success(f"✅ **{row['Nom']}** archivé.")
+                    st.cache_data.clear()
                     st.rerun()
-                else:
-                    st.error(erreur)
 
+# ── Archivés ──────────────────────────────────────────────────────────────────
+st.divider()
+with st.expander(f"📁 Objets archivés ({len(archives)})"):
+    if archives.empty:
+        st.info("Aucun objet archivé pour le moment.")
+    else:
+        display = archives.copy()
+        cols_show = [c for c in [
+            "Nom", "Catégorie", "État", "Date_Vente", "Acheteur", "Valeur_EUR", "Notes"
+        ] if c in display.columns]
+        st.dataframe(display[cols_show], use_container_width=True, hide_index=True)
 
-def logout():
-    for key in ["logged_in", "user_id", "user_nom", "user_login", "user_role", "user_metier"]:
-        st.session_state.pop(key, None)
-    st.rerun()
-
-
-def require_login():
-    if not st.session_state.get("logged_in"):
-        login_page()
-        st.stop()
-
-
-def is_admin() -> bool:
-    return str(st.session_state.get("user_role", "")).strip().lower() == "admin"
-
-
-def sidebar_user():
-    """Affiche les infos de l'utilisateur connecté dans la sidebar."""
-    with st.sidebar:
-        nom    = st.session_state.get("user_nom", "")
-        metier = st.session_state.get("user_metier", "")
-        role   = st.session_state.get("user_role", "")
-        st.markdown(f"👤 **{nom}**")
-        st.caption(f"{metier} · {role}")
-        st.divider()
-        if st.button("🚪 Se déconnecter", use_container_width=True):
-            logout()
-
-
-def get_therapeute() -> str:
-    """Retourne le nom du thérapeute connecté pour l'enregistrer dans les mouvements."""
-    return st.session_state.get("user_nom", "")
+        # Possibilité de désarchiver
+        st.markdown("**Désarchiver un objet :**")
+        options = {f"{r['Nom']} [{r['ID']}]": r['ID'] for _, r in archives.iterrows()}
+        if options:
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                choix = st.selectbox("Objet à désarchiver", list(options.keys()),
+                                     label_visibility="collapsed")
+            with col2:
+                if st.button("↩️ Désarchiver", use_container_width=True):
+                    update_materiel(options[choix], {"Archivé": ""})
+                    st.success("↩️ Objet remis dans la liste à traiter.")
+                    st.cache_data.clear()
+                    st.rerun()

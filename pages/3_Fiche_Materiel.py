@@ -11,6 +11,9 @@ from utils.gsheets import (
     encode_disponibilites, decode_disponibilites, TYPES_PERSONNE
 )
 from utils.qrcode_utils import generate_qr
+from utils.auth import require_login
+require_login()
+
 
 st.set_page_config(page_title="Fiche matériel – ErgoStock", page_icon="🔍", layout="wide")
 st.title("🔍 Fiche matériel")

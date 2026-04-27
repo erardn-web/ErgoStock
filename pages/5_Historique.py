@@ -5,6 +5,9 @@ import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.gsheets import get_mouvements, TYPES_MOUVEMENT
+from utils.auth import require_login
+require_login()
+
 
 st.set_page_config(page_title="Historique – ErgoStock", page_icon="📜", layout="wide")
 st.title("📜 Historique des mouvements")
@@ -55,7 +58,8 @@ if search:
 if filtre_type != "Tous":
     filtered = filtered[filtered["Type_Mouvement"] == filtre_type]
 
-# Tri par horodatage si disponible, sinon par date
+
+# Tri par horodatage si disponible
 if "Horodatage" in filtered.columns and filtered["Horodatage"].astype(bool).any():
     try:
         filtered["_sort"] = pd.to_datetime(filtered["Horodatage"], errors="coerce")
@@ -92,7 +96,6 @@ st.dataframe(
     use_container_width=True, hide_index=True,
 )
 
-# Lien vers fiche matériel
 st.divider()
 st.markdown("**🔍 Voir la fiche d'un article :**")
 
@@ -110,7 +113,7 @@ if not filtered.empty:
                                   label_visibility="collapsed")
         with col2:
             if st.button("🔍 Voir la fiche", type="primary", use_container_width=True):
-                st.query_params["mat_id"] = options[choix]
+                st.session_state["fiche_mat_id"] = options[choix]
                 st.switch_page("pages/3_Fiche_Materiel.py")
 
 st.divider()

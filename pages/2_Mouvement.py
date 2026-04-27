@@ -4,10 +4,9 @@ import pandas as pd
 import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from utils.gsheets import (
 from utils.auth import require_login
 require_login()
-
+from utils.gsheets import (
     get_materiel, get_personnes, get_mouvements, add_mouvement, add_personne,
     update_materiel, TYPES_MOUVEMENT, STATUS_COLORS, ETATS, TYPES_PERSONNE
 )

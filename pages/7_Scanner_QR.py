@@ -3,7 +3,7 @@ from datetime import date
 import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from utils.auth import require_login
+from utils.auth import require_login, get_therapeute
 require_login()
 from utils.gsheets import (
     get_materiel, get_personnes, add_mouvement, add_personne,
@@ -191,6 +191,7 @@ if st.button("💾 Enregistrer", type="primary", use_container_width=True):
                 "Date_Retour_Prévu":    str(date_retour) if date_retour else "",
                 "Date_Retour_Effectif": str(date_mv) if type_mv == "Retour" else "",
                 "Notes":                notes_mv,
+                "Thérapeute":           get_therapeute(),
             })
 
             if new_etat and new_etat != row["État"]:

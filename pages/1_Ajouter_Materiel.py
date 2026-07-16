@@ -10,7 +10,7 @@ from utils.gsheets import (
     encode_disponibilites
 )
 from utils.qrcode_utils import generate_qr
-from utils.auth import require_login
+from utils.auth import require_login, get_therapeute
 require_login()
 
 
@@ -167,6 +167,7 @@ if st.button("💾 Enregistrer le matériel", type="primary", use_container_widt
                     "Personne":       personne_nom_final,
                     "Contact":        personne_contact,
                     "Notes":          notes,
+                    "Thérapeute":     get_therapeute(),
                 })
 
         st.success(f"✅ Matériel **{nom}** ajouté avec l'ID **{mat_id}**")

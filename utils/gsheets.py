@@ -1,3 +1,4 @@
+import unicodedata
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
@@ -5,6 +6,11 @@ import streamlit as st
 from datetime import datetime
 import uuid
 import time
+
+
+def normalize(text: str) -> str:
+    """Supprime les accents pour une recherche souple."""
+    return unicodedata.normalize('NFD', str(text)).encode('ascii', 'ignore').decode().lower()
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -24,7 +30,7 @@ HEADERS_MATERIEL = [
 HEADERS_MOUVEMENTS = [
     "ID_Mouvement", "ID_Matériel", "Nom_Matériel", "Date",
     "Type_Mouvement", "Personne", "Contact",
-    "Date_Retour_Prévu", "Date_Retour_Effectif", "Notes", "Horodatage"
+    "Date_Retour_Prévu", "Date_Retour_Effectif", "Notes", "Horodatage", "Thérapeute"
 ]
 
 HEADERS_PERSONNES = [
@@ -256,6 +262,7 @@ def add_mouvement(data: dict):
         data.get("Date_Retour_Effectif", ""),
         data.get("Notes", ""),
         datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        data.get("Thérapeute", ""),
     ]
     ws.append_row(row)
     update_statut_materiel(data["ID_Matériel"], data["Type_Mouvement"])

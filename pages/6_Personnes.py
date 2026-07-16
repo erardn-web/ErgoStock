@@ -5,7 +5,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.auth import require_login
 require_login()
-from utils.gsheets import get_personnes, add_personne, update_personne, get_mouvements, TYPES_PERSONNE
+from utils.gsheets import get_personnes, add_personne, update_personne, get_mouvements, TYPES_PERSONNE, normalize
 
 st.set_page_config(page_title="Personnes – ErgoStock", page_icon="👥", layout="wide")
 st.title("👥 Personnes")
@@ -40,7 +40,7 @@ with tab1:
         if search:
             termes = search.lower().split()
             mask = filtered["Affichage"].apply(
-                lambda n: all(t in n.lower() for t in termes)
+                lambda n: all(t in normalize(n) for t in [normalize(term) for term in termes])
             )
             mask2 = (
                 filtered["Téléphone"].str.contains(search, case=False, na=False) |

@@ -3,7 +3,7 @@ import pandas as pd
 import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from utils.gsheets import get_materiel, STATUS_COLORS
+from utils.gsheets import normalize, get_materiel, STATUS_COLORS
 from utils.auth import require_login
 require_login()
 
@@ -40,9 +40,9 @@ with st.expander("🔍 Filtres", expanded=True):
 filtered = df.copy()
 if search:
     mask = (
-        filtered["Nom"].str.contains(search, case=False, na=False) |
-        filtered["Description"].str.contains(search, case=False, na=False) |
-        filtered["ID"].str.contains(search, case=False, na=False)
+        filtered["Nom"].apply(lambda x: normalize(search) in normalize(x)) |
+        filtered["Description"].apply(lambda x: normalize(search) in normalize(x)) |
+        filtered["ID"].apply(lambda x: normalize(search) in normalize(x))
     )
     filtered = filtered[mask]
 if filtre_statut != "Tous":

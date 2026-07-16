@@ -5,6 +5,7 @@ import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.gsheets import (
+    normalize,
     get_materiel, get_mouvements, get_personnes, get_historique_materiel,
     update_materiel, add_personne,
     STATUS_COLORS, CATEGORIES, ETATS, upload_photo_to_drive,
@@ -54,9 +55,9 @@ with st.expander("🔍 Rechercher un article", expanded=True):
 filtered = df_mat.copy()
 if search:
     mask = (
-        filtered["Nom"].str.contains(search, case=False, na=False) |
-        filtered["ID"].str.contains(search, case=False, na=False) |
-        filtered["Description"].str.contains(search, case=False, na=False)
+        filtered["Nom"].apply(lambda x: normalize(search) in normalize(x)) |
+        filtered["ID"].apply(lambda x: normalize(search) in normalize(x)) |
+        filtered["Description"].apply(lambda x: normalize(search) in normalize(x))
     )
     filtered = filtered[mask]
 if filtre_statut != "Tous":
@@ -190,7 +191,7 @@ else:
     hist["Type_Mouvement"] = hist["Type_Mouvement"].apply(
         lambda t: f"{ICONS.get(t, '🔄')} {t}"
     )
-    cols = [c for c in ["Date", "Type_Mouvement", "Personne", "Contact",
+    cols = [c for c in ["Date", "Type_Mouvement", "Thérapeute", "Personne", "Contact",
                          "Date_Retour_Prévu", "Date_Retour_Effectif", "Notes"]
             if c in hist.columns]
     st.dataframe(hist[cols], use_container_width=True, hide_index=True)

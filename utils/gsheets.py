@@ -70,7 +70,7 @@ STATUS_AFTER_MOUVEMENT = {
 CATEGORIES = [
     "Aide à la mobilité", "Aide à la communication", "Aide à la préhension",
     "Aide à la vie quotidienne", "Orthèse / Attelle", "Siège / Positionnement",
-    "Jeu / Loisir", "Évaluation / Bilan", "Formation / Documentation", "Autre",
+    "Environnement", "Jeu / Loisir", "Évaluation / Bilan", "Formation / Documentation", "Autre",
 ]
 
 ETATS = ["Neuf", "Très bon", "Bon", "Correct", "Usagé", "À réparer"]

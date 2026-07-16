@@ -4,9 +4,10 @@ import pandas as pd
 import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from utils.auth import require_login
+from utils.auth import require_login, get_therapeute
 require_login()
 from utils.gsheets import (
+    normalize,
     get_materiel, get_personnes, get_mouvements, add_mouvement, add_personne,
     update_materiel, TYPES_MOUVEMENT, STATUS_COLORS, ETATS, TYPES_PERSONNE
 )
@@ -85,8 +86,8 @@ else:
     filtered = df_mat.copy()
     if search:
         mask = (
-            filtered["Nom"].str.contains(search, case=False, na=False) |
-            filtered["ID"].str.contains(search, case=False, na=False)
+            filtered["Nom"].apply(lambda x: normalize(search) in normalize(x)) |
+            filtered["ID"].apply(lambda x: normalize(search) in normalize(x))
         )
         filtered = filtered[mask]
     if filtre_statut != "Tous":
@@ -280,6 +281,7 @@ if st.button("💾 Enregistrer le mouvement", type="primary", use_container_widt
                 "Date_Retour_Prévu":    str(date_retour) if date_retour else "",
                 "Date_Retour_Effectif": str(date_mv) if type_mv == "Retour" else "",
                 "Notes":                notes_mv,
+                "Thérapeute":           get_therapeute(),
             })
 
             if new_etat and new_etat != row["État"]:

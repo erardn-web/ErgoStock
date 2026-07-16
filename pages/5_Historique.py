@@ -4,7 +4,7 @@ from datetime import date, timedelta
 import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from utils.gsheets import get_mouvements, TYPES_MOUVEMENT
+from utils.gsheets import normalize, get_mouvements, TYPES_MOUVEMENT
 from utils.auth import require_login
 require_login()
 
@@ -25,15 +25,17 @@ if df_mv.empty:
     st.stop()
 
 with st.expander("🔍 Filtres", expanded=True):
-    fc1, fc2, fc3, fc4 = st.columns(4)
+    fc1, fc2, fc3, fc4, fc5 = st.columns(5)
     with fc1:
         search = st.text_input("Recherche (nom, personne…)", "")
     with fc2:
         types_options = ["Tous"] + TYPES_MOUVEMENT
         filtre_type = st.selectbox("Type de mouvement", types_options)
     with fc3:
-        date_debut = st.date_input("Date de début", value=date.today() - timedelta(days=90))
+        filtre_therapeute = st.text_input("Thérapeute", "")
     with fc4:
+        date_debut = st.date_input("Date de début", value=date.today() - timedelta(days=90))
+    with fc5:
         date_fin = st.date_input("Date de fin", value=date.today())
 
 filtered = df_mv.copy()
@@ -49,11 +51,16 @@ except Exception:
 
 if search:
     mask = (
-        filtered["Nom_Matériel"].str.contains(search, case=False, na=False) |
-        filtered["Personne"].str.contains(search, case=False, na=False) |
-        filtered["ID_Matériel"].str.contains(search, case=False, na=False)
+        filtered["Nom_Matériel"].apply(lambda x: normalize(search) in normalize(x)) |
+        filtered["Personne"].apply(lambda x: normalize(search) in normalize(x)) |
+        filtered["ID_Matériel"].apply(lambda x: normalize(search) in normalize(x))
     )
     filtered = filtered[mask]
+
+if filtre_therapeute.strip():
+    filtered = filtered[
+        filtered["Thérapeute"].apply(lambda x: normalize(filtre_therapeute.strip()) in normalize(x))
+    ]
 
 if filtre_type != "Tous":
     filtered = filtered[filtered["Type_Mouvement"] == filtre_type]
@@ -84,7 +91,7 @@ display["Type_Mouvement"] = display["Type_Mouvement"].apply(
 )
 
 cols_show = [c for c in [
-    "Date", "Nom_Matériel", "Type_Mouvement", "Personne",
+    "Date", "Nom_Matériel", "Type_Mouvement", "Thérapeute", "Personne",
     "Contact", "Date_Retour_Prévu", "Date_Retour_Effectif", "Notes"
 ] if c in display.columns]
 

@@ -41,18 +41,46 @@ if df_mat.empty:
 params       = st.query_params
 preselect_id = st.session_state.pop("fiche_mat_id", "") or st.query_params.get("mat_id", "")
 
+# Dernière personne « possédant » chaque matériel (prêt, location, don, vente)
+STATUTS_CHEZ_PERSONNE = ["En prêt", "En location", "Donné", "Vendu"]
+TYPES_SORTANTS = ["Prêt sortant", "Location", "Don sortant", "Vente"]
+
+def derniere_personne_par_materiel(df_mv_all):
+    if df_mv_all.empty:
+        return {}
+    d = df_mv_all[df_mv_all["Type_Mouvement"].isin(TYPES_SORTANTS)].copy()
+    if d.empty:
+        return {}
+    d["_k"] = pd.to_datetime(d.get("Horodatage", ""), errors="coerce")
+    d["_d"] = pd.to_datetime(d["Date"], errors="coerce")
+    d = d.sort_values(["_k", "_d"], na_position="first")
+    return d.groupby("ID_Matériel")["Personne"].last().to_dict()
+
+_chez = derniere_personne_par_materiel(load_mv())
+df_mat = df_mat.copy()
+df_mat["Chez"] = df_mat.apply(
+    lambda r: _chez.get(r["ID"], "") if r.get("Statut") in STATUTS_CHEZ_PERSONNE else "",
+    axis=1,
+)
+
 with st.expander("🔍 Rechercher un article", expanded=True):
-    fc1, fc2, fc3 = st.columns(3)
+    fc1, fc2, fc3, fc4 = st.columns(4)
     with fc1:
         search = st.text_input("Recherche (nom, ID…)", "")
     with fc2:
+        search_pers = st.text_input("Personne (chez qui ?)", "")
+    with fc3:
         statuts = ["Tous"] + sorted(df_mat["Statut"].dropna().unique().tolist())
         filtre_statut = st.selectbox("Statut", statuts)
-    with fc3:
+    with fc4:
         cats = ["Toutes"] + sorted(df_mat["Catégorie"].dropna().unique().tolist())
         filtre_cat = st.selectbox("Catégorie", cats)
 
 filtered = df_mat.copy()
+if search_pers.strip():
+    filtered = filtered[
+        filtered["Chez"].apply(lambda x: normalize(search_pers.strip()) in normalize(x))
+    ]
 if search:
     mask = (
         filtered["Nom"].apply(lambda x: normalize(search) in normalize(x)) |
@@ -67,7 +95,7 @@ if filtre_cat != "Toutes":
 
 st.caption(f"**{len(filtered)}** article(s)")
 
-display_df = filtered[["ID", "Nom", "Catégorie", "État", "Statut"]].copy()
+display_df = filtered[["ID", "Nom", "Catégorie", "État", "Statut", "Chez"]].copy()
 display_df["Statut"] = display_df["Statut"].apply(lambda s: f"{STATUS_COLORS.get(s, '⚪')} {s}")
 
 selected = st.dataframe(

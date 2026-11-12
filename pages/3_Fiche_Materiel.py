@@ -45,10 +45,12 @@ preselect_id = st.session_state.pop("fiche_mat_id", "") or st.query_params.get("
 STATUTS_CHEZ_PERSONNE = ["En prêt", "En location", "Donné", "Vendu"]
 TYPES_SORTANTS = ["Prêt sortant", "Location", "Don sortant", "Vente"]
 
-def derniere_personne_par_materiel(df_mv_all):
+TYPES_ENTRANTS = ["Don reçu", "Prêt entrant", "Achat"]
+
+def derniere_personne_par_materiel(df_mv_all, types):
     if df_mv_all.empty:
         return {}
-    d = df_mv_all[df_mv_all["Type_Mouvement"].isin(TYPES_SORTANTS)].copy()
+    d = df_mv_all[df_mv_all["Type_Mouvement"].isin(types) & (df_mv_all["Personne"] != "")].copy()
     if d.empty:
         return {}
     d["_k"] = pd.to_datetime(d.get("Horodatage", ""), errors="coerce")
@@ -56,19 +58,22 @@ def derniere_personne_par_materiel(df_mv_all):
     d = d.sort_values(["_k", "_d"], na_position="first")
     return d.groupby("ID_Matériel")["Personne"].last().to_dict()
 
-_chez = derniere_personne_par_materiel(load_mv())
+_mv_all = load_mv()
+_chez = derniere_personne_par_materiel(_mv_all, TYPES_SORTANTS)
+_prov = derniere_personne_par_materiel(_mv_all, TYPES_ENTRANTS)
 df_mat = df_mat.copy()
 df_mat["Chez"] = df_mat.apply(
     lambda r: _chez.get(r["ID"], "") if r.get("Statut") in STATUTS_CHEZ_PERSONNE else "",
     axis=1,
 )
+df_mat["Provenance"] = df_mat["ID"].apply(lambda i: _prov.get(i, ""))
 
 with st.expander("🔍 Rechercher un article", expanded=True):
     fc1, fc2, fc3, fc4 = st.columns(4)
     with fc1:
         search = st.text_input("Recherche (nom, ID…)", "")
     with fc2:
-        search_pers = st.text_input("Personne (chez qui ?)", "")
+        search_pers = st.text_input("Personne (détenteur ou provenance)", "")
     with fc3:
         statuts = ["Tous"] + sorted(df_mat["Statut"].dropna().unique().tolist())
         filtre_statut = st.selectbox("Statut", statuts)
@@ -79,7 +84,8 @@ with st.expander("🔍 Rechercher un article", expanded=True):
 filtered = df_mat.copy()
 if search_pers.strip():
     filtered = filtered[
-        filtered["Chez"].apply(lambda x: normalize(search_pers.strip()) in normalize(x))
+        (filtered["Chez"] + " " + filtered["Provenance"]).apply(
+            lambda x: normalize(search_pers.strip()) in normalize(x))
     ]
 if search:
     mask = (
@@ -95,7 +101,7 @@ if filtre_cat != "Toutes":
 
 st.caption(f"**{len(filtered)}** article(s)")
 
-display_df = filtered[["ID", "Nom", "Catégorie", "État", "Statut", "Chez"]].copy()
+display_df = filtered[["ID", "Nom", "Catégorie", "État", "Statut", "Chez", "Provenance"]].copy()
 display_df["Statut"] = display_df["Statut"].apply(lambda s: f"{STATUS_COLORS.get(s, '⚪')} {s}")
 
 selected = st.dataframe(

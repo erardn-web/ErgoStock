@@ -3,8 +3,8 @@ import pandas as pd
 from datetime import datetime
 import sys, os
 
-sys.path.insert(0, os.path.dirname(__file__))
-from utils.gsheets import init_sheets, get_materiel, get_mouvements, STATUS_COLORS
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from utils.gsheets import init_sheets, get_materiel, get_mouvements, update_materiel, STATUS_COLORS
 from utils.auth import require_login
 require_login()
 
@@ -37,7 +37,7 @@ if not st.session_state["sheets_ok"]:
     st.error(st.session_state["sheets_msg"])
     st.stop()
 
-st.title("🏥 ErgoStock — Tableau de bord")
+st.title("🏥 ErgoStock")
 st.caption(f"Mis à jour le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
 st.divider()
 
@@ -61,7 +61,8 @@ with qr_col:
     </div>
     """, unsafe_allow_html=True)
     if st.button("📷 Ouvrir le scanner", type="primary", use_container_width=True):
-        st.switch_page("pages/7_Scanner_QR.py")
+        st.session_state["mv_scan_toggle"] = True
+        st.switch_page("vues/mouvements.py")
 
 st.divider()
 
@@ -143,65 +144,87 @@ else:
 
 st.divider()
 
-# ── Derniers mouvements ───────────────────────────────────────────────────────
-st.subheader("⚡ Derniers mouvements")
+# ── Objets vendus à traiter ───────────────────────────────────────────────────
+def objets_vendus(df_mat, df_mv):
+    vendus = df_mat[df_mat["Statut"] == "Vendu"].copy()
+    if "Archivé" not in vendus.columns:
+        vendus["Archivé"] = ""
+    a_traiter = vendus[vendus["Archivé"] != "oui"].copy()
+    archives  = vendus[vendus["Archivé"] == "oui"].copy()
 
-ICONS = {
-    "Prêt sortant":         "📤",
-    "Retour":               "📥",
-    "Achat":                "🛒",
-    "Don reçu":             "🎁",
-    "Prêt entrant":         "📦",
-    "Location":             "🔵",
-    "Vente":                "💶",
-    "Don sortant":          "❤️",
-    "Mis en réparation":    "🔧",
-    "Retour de réparation": "✅",
-    "Hors service":         "❌",
-}
+    if not df_mv.empty:
+        ventes = (
+            df_mv[df_mv["Type_Mouvement"] == "Vente"]
+            .sort_values("Date", ascending=False)
+            .drop_duplicates(subset="ID_Matériel", keep="first")
+            [["ID_Matériel", "Date", "Personne", "Contact", "Notes"]]
+            .rename(columns={"Date": "Date_Vente", "Personne": "Acheteur",
+                             "Contact": "Contact_Acheteur", "Notes": "Notes_Vente"})
+        )
+        a_traiter = a_traiter.merge(ventes, left_on="ID", right_on="ID_Matériel", how="left")
+        archives  = archives.merge(ventes,  left_on="ID", right_on="ID_Matériel", how="left")
 
-if df_mv.empty:
-    st.info("Aucun mouvement enregistré.")
-else:
-    # Tri par horodatage si disponible, sinon par date
-    if "Horodatage" in df_mv.columns and df_mv["Horodatage"].astype(bool).any():
-        try:
-            df_mv["_sort"] = pd.to_datetime(df_mv["Horodatage"], errors="coerce")
-            recent = df_mv.sort_values("_sort", ascending=False).head(10)
-            df_mv.drop(columns=["_sort"], inplace=True)
-        except Exception:
-            recent = df_mv.sort_values("Date", ascending=False).head(10)
-    else:
-        recent = df_mv.sort_values("Date", ascending=False).head(10)
-
-    for _, row in recent.iterrows():
-        icon    = ICONS.get(row.get("Type_Mouvement", ""), "🔄")
-        type_mv = row.get("Type_Mouvement", "?")
-        nom     = row.get("Nom_Matériel", "?")
-        date_mv = row.get("Date", "?")
-        personne        = row.get("Personne", "")
-        contact         = row.get("Contact", "")
-        notes           = row.get("Notes", "")
-        retour_prevu    = row.get("Date_Retour_Prévu", "")
-        retour_effectif = row.get("Date_Retour_Effectif", "")
-
+    st.subheader(f"💼 Objets vendus à traiter ({len(a_traiter)})")
+    if a_traiter.empty:
+        st.success("✅ Rien à traiter.")
+    for _, row in a_traiter.iterrows():
         with st.container(border=True):
+            c1, c2, c3 = st.columns([3, 2, 1])
+            with c1:
+                st.markdown(f"**📦 {row['Nom']}**  \n`{row['ID']}` · {row.get('Catégorie', '')}")
+                if row.get("Date_Vente"):
+                    st.markdown(f"📅 Vendu le **{row['Date_Vente']}**")
+                if row.get("Acheteur"):
+                    ligne = f"👤 **{row['Acheteur']}**"
+                    if row.get("Contact_Acheteur"):
+                        ligne += f" · 📞 {row['Contact_Acheteur']}"
+                    st.markdown(ligne)
+                if row.get("Notes_Vente"):
+                    st.markdown(f"💬 *{row['Notes_Vente']}*")
+            with c2:
+                action = st.multiselect(
+                    "Action",
+                    ["✅ Fournisseur informé", "✅ Remplacement commandé",
+                     "✅ Aucune action requise", "✅ Autre action effectuée"],
+                    key=f"action_{row['ID']}",
+                    placeholder="Action(s) effectuée(s)…",
+                    label_visibility="collapsed")
+                note_action = st.text_input("Note", key=f"note_{row['ID']}",
+                                            placeholder="Détail (optionnel)",
+                                            label_visibility="collapsed")
+            with c3:
+                if st.button("📁 Archiver", key=f"archive_{row['ID']}", type="primary",
+                             use_container_width=True, disabled=(len(action) == 0)):
+                    horodatage = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    note_finale = f"{', '.join(action)} — {horodatage}"
+                    if note_action.strip():
+                        note_finale += f" — {note_action.strip()}"
+                    nouvelle = f"{row.get('Notes', '')}\n[VENTE ARCHIVÉE] {note_finale}".strip()
+                    update_materiel(row["ID"], {"Archivé": "oui", "Notes": nouvelle})
+                    st.cache_data.clear()
+                    st.rerun()
+
+    with st.expander(f"📁 Objets archivés ({len(archives)})"):
+        if archives.empty:
+            st.info("Aucun objet archivé.")
+        else:
+            cols_show = [c for c in ["Nom", "Catégorie", "État", "Date_Vente", "Acheteur",
+                                     "Valeur_EUR", "Notes"] if c in archives.columns]
+            st.dataframe(archives[cols_show], use_container_width=True, hide_index=True)
+            options = {f"{r['Nom']} [{r['ID']}]": r["ID"] for _, r in archives.iterrows()}
             c1, c2 = st.columns([3, 1])
             with c1:
-                st.markdown(f"{icon} **{nom}** — {type_mv}")
-                if personne:
-                    line = f"👤 {personne}"
-                    if contact:
-                        line += f" · 📞 {contact}"
-                    st.markdown(line)
-                if retour_prevu:
-                    st.markdown(f"📅 Retour prévu : {retour_prevu}")
-                if retour_effectif:
-                    st.markdown(f"✅ Retour effectif : {retour_effectif}")
-                if notes:
-                    st.markdown(f"💬 *{notes}*")
+                choix = st.selectbox("Désarchiver", list(options.keys()),
+                                     label_visibility="collapsed", key="desarchive_sel")
             with c2:
-                st.markdown(f"**{date_mv}**")
+                if st.button("↩️ Désarchiver", use_container_width=True, key="desarchive_btn"):
+                    update_materiel(options[choix], {"Archivé": ""})
+                    st.cache_data.clear()
+                    st.rerun()
+
+
+if not df_mat.empty:
+    objets_vendus(df_mat, df_mv)
 
 st.divider()
 st.caption("ErgoStock • Cabinet d'ergothérapie • Données stockées dans Google Sheets")

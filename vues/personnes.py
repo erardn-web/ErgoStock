@@ -7,7 +7,6 @@ from utils.auth import require_login
 require_login()
 from utils.gsheets import get_personnes, add_personne, update_personne, get_mouvements, TYPES_PERSONNE, normalize
 
-st.set_page_config(page_title="Personnes – ErgoStock", page_icon="👥", layout="wide")
 st.title("👥 Personnes")
 st.divider()
 

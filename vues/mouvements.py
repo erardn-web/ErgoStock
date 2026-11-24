@@ -10,7 +10,8 @@ from utils.gsheets import (
     normalize, add_mouvement, update_materiel,
     TYPES_MOUVEMENT, STATUS_COLORS, ETATS,
 )
-from utils.ui import ICONS, load_mat, load_mv, load_pers, person_form, person_save, nom_affiche
+from utils.ui import (ICONS, load_mat, load_mv, load_pers, person_form, person_save,
+                      nom_affiche, derniere_personne)
 
 st.title("🔄 Mouvements")
 
@@ -305,8 +306,89 @@ def historique():
                        file_name="historique_ergostock.csv", mime="text/csv")
 
 
-tab_enreg, tab_hist = st.tabs(["🔄 Enregistrer", "📜 Historique"])
+# ══════════════════════════════════════════════════════════════════════════════
+# ONGLET 3 — Mouvement groupé
+# ══════════════════════════════════════════════════════════════════════════════
+def groupe():
+    st.caption("Applique le même mouvement à plusieurs articles d'un coup "
+               "(ex. rendre à Buma tout ce qui vient de chez eux).")
+    df_mat = load_mat()
+    df_p = load_pers()
+    df_mv = load_mv()
+    if df_mat.empty:
+        st.info("Aucun matériel enregistré.")
+        return
+
+    prov = derniere_personne(df_mv, ["Don reçu", "Prêt entrant", "Achat"])
+    df = df_mat.copy()
+    df["Provenance"] = df["ID"].apply(lambda i: prov.get(i, ""))
+
+    fc1, fc2 = st.columns(2)
+    with fc1:
+        f_prov = st.text_input("Provenance (personne / société)", "", key="g_prov",
+                               placeholder="ex : Buma")
+    with fc2:
+        statuts = sorted(df["Statut"].dropna().unique().tolist())
+        f_statut = st.multiselect("Statut", statuts,
+                                  default=["Disponible"] if "Disponible" in statuts else [],
+                                  key="g_statut")
+    if f_prov.strip():
+        q = normalize(f_prov.strip())
+        df = df[df["Provenance"].apply(lambda x: q in normalize(x))]
+    if f_statut:
+        df = df[df["Statut"].isin(f_statut)]
+
+    st.caption(f"**{len(df)}** article(s) — cochez ceux à traiter")
+    if df.empty:
+        return
+    aff = df[["ID", "Nom", "Catégorie", "Statut", "Provenance"]].copy()
+    aff["Statut"] = aff["Statut"].apply(lambda s: f"{STATUS_COLORS.get(s, '⚪')} {s}")
+    sel = st.dataframe(aff, use_container_width=True, hide_index=True,
+                       on_select="rerun", selection_mode="multi-row", key="g_table")
+    rows = sel["selection"]["rows"] if sel else []
+    if not rows:
+        st.info("👆 Sélectionnez un ou plusieurs articles dans le tableau.")
+        return
+    choisis = df.iloc[rows]
+    st.success(f"{len(choisis)} article(s) sélectionné(s) : " + ", ".join(choisis["Nom"].tolist()))
+
+    st.divider()
+    types = ["Rendu au prêteur", "Retour", "Vente", "Don sortant", "Prêt sortant",
+             "Location", "Mis en réparation", "Hors service"]
+    type_mv = st.selectbox("Mouvement à appliquer", types, key="g_type")
+    date_mv = st.date_input("Date", value=date.today(), key="g_date")
+
+    need_person = type_mv != "Hors service"
+    p_res = {"mode": "none", "nom": "", "contact": "", "new": None, "error": None}
+    if need_person:
+        default = f_prov.strip() if type_mv == "Rendu au prêteur" else ""
+        p_res = person_form(df_p, f"g_pers_{type_mv}", default_name=default,
+                            titre="Personne concernée")
+    notes = st.text_area("Notes", "", key="g_notes")
+
+    if st.button(f"💾 Appliquer « {type_mv} » à {len(choisis)} article(s)",
+                 type="primary", use_container_width=True, key="g_save"):
+        if need_person and p_res["error"]:
+            st.error(p_res["error"])
+            return
+        with st.spinner("Enregistrement…"):
+            p_nom, p_contact = person_save(p_res) if need_person else ("", "")
+            for _, r in choisis.iterrows():
+                add_mouvement({
+                    "ID_Matériel": r["ID"], "Nom_Matériel": r["Nom"],
+                    "Date": str(date_mv), "Type_Mouvement": type_mv,
+                    "Personne": p_nom, "Contact": p_contact,
+                    "Date_Retour_Effectif": str(date_mv) if type_mv == "Retour" else "",
+                    "Notes": notes, "Thérapeute": get_therapeute(),
+                })
+        st.success(f"✅ « {type_mv} » enregistré pour {len(choisis)} article(s).")
+        st.cache_data.clear()
+
+
+tab_enreg, tab_group, tab_hist = st.tabs(["🔄 Enregistrer", "📦 Mouvement groupé", "📜 Historique"])
 with tab_enreg:
     enregistrer()
+with tab_group:
+    groupe()
 with tab_hist:
     historique()

@@ -1,5 +1,6 @@
 """Éléments d'interface partagés entre les vues d'ErgoStock."""
 import streamlit as st
+import pandas as pd
 from utils.gsheets import (
     get_materiel, get_mouvements, get_personnes, add_personne, TYPES_PERSONNE
 )
@@ -108,3 +109,16 @@ def person_save(res):
     if res["mode"] == "new" and res["new"] and res["new"]["Nom"]:
         add_personne(res["new"])
     return res["nom"], res["contact"]
+
+
+def derniere_personne(df_mv, types):
+    """Dernière personne liée à chaque matériel pour ces types de mouvement."""
+    if df_mv.empty:
+        return {}
+    d = df_mv[df_mv["Type_Mouvement"].isin(types) & (df_mv["Personne"] != "")].copy()
+    if d.empty:
+        return {}
+    d["_k"] = pd.to_datetime(d["Horodatage"], errors="coerce") if "Horodatage" in d else pd.NaT
+    d["_d"] = pd.to_datetime(d["Date"], errors="coerce")
+    d = d.sort_values(["_k", "_d"], na_position="first")
+    return d.groupby("ID_Matériel")["Personne"].last().to_dict()

@@ -15,6 +15,7 @@ from utils.gsheets import (
 from utils.qrcode_utils import generate_qr
 from utils.ui import (
     ICONS, load_mat, load_mv, load_pers, person_form, person_save, AUCUNE,
+    derniere_personne,
 )
 
 STATUTS_CHEZ_PERSONNE = ["En prêt", "En location", "Donné", "Vendu"]
@@ -22,19 +23,6 @@ TYPES_SORTANTS = ["Prêt sortant", "Location", "Don sortant", "Vente"]
 TYPES_ENTRANTS = ["Don reçu", "Prêt entrant", "Achat"]
 
 st.title("📦 Matériel")
-
-
-def derniere_personne(df_mv, types):
-    """Dernière personne liée à chaque matériel pour ces types de mouvement."""
-    if df_mv.empty:
-        return {}
-    d = df_mv[df_mv["Type_Mouvement"].isin(types) & (df_mv["Personne"] != "")].copy()
-    if d.empty:
-        return {}
-    d["_k"] = pd.to_datetime(d["Horodatage"], errors="coerce") if "Horodatage" in d else pd.NaT
-    d["_d"] = pd.to_datetime(d["Date"], errors="coerce")
-    d = d.sort_values(["_k", "_d"], na_position="first")
-    return d.groupby("ID_Matériel")["Personne"].last().to_dict()
 
 
 def photo_widget(prefix, actuelle="", garder=False):

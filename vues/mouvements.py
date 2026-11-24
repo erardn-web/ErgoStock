@@ -133,8 +133,17 @@ def enregistrer():
     st.divider()
     st.subheader("2️⃣ Type de mouvement")
     statut_actuel = row["Statut"]
-    type_mv = st.selectbox("Type de mouvement", TRANSITIONS.get(statut_actuel, TYPES_MOUVEMENT),
-                           key=f"{k}_type")
+    types_possibles = list(TRANSITIONS.get(statut_actuel, TYPES_MOUVEMENT))
+    # Matériel emprunté : possibilité de le rendre au prêteur
+    emprunte = row.get("Mode_Acquisition") == "Prêt entrant" or (
+        not df_mv.empty and not df_mv[(df_mv["ID_Matériel"] == mat_id) &
+                                      (df_mv["Type_Mouvement"] == "Prêt entrant")].empty)
+    if emprunte and statut_actuel in ["Disponible", "En réparation", "Hors service"]:
+        types_possibles.insert(types_possibles.index("Hors service") if "Hors service" in types_possibles
+                               else len(types_possibles), "Rendu au prêteur")
+    if "Rendu au prêteur" in types_possibles and not emprunte:
+        types_possibles.remove("Rendu au prêteur")
+    type_mv = st.selectbox("Type de mouvement", types_possibles, key=f"{k}_type")
     date_mv = st.date_input("Date du mouvement", value=date.today(), key=f"{k}_date")
 
     date_retour = None
@@ -170,13 +179,21 @@ def enregistrer():
                 dernier_nom = sortants.iloc[0].get("Personne", "")
                 dernier_contact = sortants.iloc[0].get("Contact", "")
 
+        preteur = ""
+        if type_mv == "Rendu au prêteur" and not df_mv.empty:
+            ent = df_mv[(df_mv["ID_Matériel"] == mat_id) &
+                        (df_mv["Type_Mouvement"] == "Prêt entrant") &
+                        (df_mv["Personne"] != "")].sort_values("Date", ascending=False)
+            if not ent.empty:
+                preteur = ent.iloc[0]["Personne"].replace(" (Pro)", "")
+
         if is_retour and dernier_nom:
             st.info(f"👤 **{dernier_nom}**" + (f" · 📞 {dernier_contact}" if dernier_contact else ""))
             p_res = {"mode": "existing", "nom": dernier_nom, "contact": dernier_contact,
                      "new": None, "error": None}
         else:
-            default = dernier_nom if statut_actuel in ["En prêt", "En location"] else ""
-            p_res = person_form(df_p, f"{k}_pers", default_name=default,
+            default = preteur or (dernier_nom if statut_actuel in ["En prêt", "En location"] else "")
+            p_res = person_form(df_p, f"{k}_pers_{type_mv}", default_name=default,
                                 titre="Sélectionner une personne")
 
     st.divider()

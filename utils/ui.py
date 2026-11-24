@@ -9,6 +9,7 @@ ICONS = {
     "Don reçu": "🎁", "Prêt entrant": "📦", "Location": "🔵",
     "Vente": "💶", "Don sortant": "❤️", "Mis en réparation": "🔧",
     "Retour de réparation": "✅", "Hors service": "❌",
+    "Rendu au prêteur": "↩️",
 }
 
 AUCUNE   = "— Aucune / Non renseignée —"

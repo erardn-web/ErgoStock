@@ -45,12 +45,14 @@ STATUS_COLORS = {
     "Donné":         "⚫",
     "En réparation": "🟠",
     "Hors service":  "❌",
+    "Rendu":         "⚪",
 }
 
 TYPES_MOUVEMENT = [
     "Achat", "Don reçu", "Prêt entrant", "Prêt sortant",
     "Location", "Vente", "Don sortant", "Retour",
     "Mis en réparation", "Retour de réparation", "Hors service",
+    "Rendu au prêteur",
 ]
 
 STATUS_AFTER_MOUVEMENT = {
@@ -65,6 +67,7 @@ STATUS_AFTER_MOUVEMENT = {
     "Mis en réparation":    "En réparation",
     "Retour de réparation": "Disponible",
     "Hors service":         "Hors service",
+    "Rendu au prêteur":     "Rendu",
 }
 
 CATEGORIES = [
